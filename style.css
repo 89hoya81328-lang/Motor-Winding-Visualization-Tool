@@ -1,0 +1,347 @@
+/* --- 1. CSS 변수 (디자인 토큰) --- */
+    :root {
+      --bg-primary: #0f1923;
+      --bg-secondary: #1a2736;
+      --bg-card: #1e3045;
+      --bg-card-hover: #243a52;
+      --text-primary: #e8edf2;
+      --text-secondary: #8a9bb5;
+      --text-muted: #5a6f8a;
+      --accent-cyan: #00d4ff;
+      --accent-cyan-dim: rgba(0,212,255,0.15);
+      --phase-u: #ff4d6a;
+      --phase-u-bg: rgba(255,77,106,0.12);
+      --phase-v: #3b82f6;
+      --phase-v-bg: rgba(59,130,246,0.12);
+      --phase-w: #22c55e;
+      --phase-w-bg: rgba(34,197,94,0.12);
+      --border-color: rgba(255,255,255,0.06);
+      --radius: 12px;
+      --shadow: 0 8px 32px rgba(0,0,0,0.3);
+      --font: 'Segoe UI', -apple-system, sans-serif;
+    }
+
+    /* --- 2. 기본 리셋 및 바디 --- */
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: var(--font);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* --- 3. 헤더 --- */
+    .header {
+      text-align: center;
+      padding: 48px 20px 32px;
+      position: relative;
+    }
+    .header::after {
+      content: '';
+      position: absolute; bottom: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 120px; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+    }
+    .header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent-cyan), #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+    .header p { color: var(--text-secondary); font-size: 0.95rem; }
+
+    /* --- 4. 컨테이너 --- */
+    .container { max-width: 900px; margin: 0 auto; padding: 32px 20px 60px; }
+
+    /* --- 5. 카드 공통 스타일 --- */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 28px;
+      overflow: hidden;
+      animation: fadeUp 0.5s ease both;
+    }
+    .card-title {
+      padding: 16px 24px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--accent-cyan);
+      border-bottom: 1px solid var(--border-color);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-title .icon { font-size: 1.1rem; }
+
+    /* --- 6. 사양 테이블 --- */
+    .spec-table { width: 100%; border-collapse: collapse; }
+    .spec-table th, .spec-table td {
+      padding: 14px 24px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 0.9rem;
+    }
+    .spec-table th {
+      color: var(--text-secondary);
+      font-weight: 500; width: 40%;
+      background: rgba(0,0,0,0.15);
+    }
+    .spec-table td { font-weight: 600; }
+    .spec-table tr:last-child th,
+    .spec-table tr:last-child td { border-bottom: none; }
+    .badge {
+      display: inline-block;
+      padding: 3px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .badge-cyan { background: var(--accent-cyan-dim); color: var(--accent-cyan); }
+    .badge-u { background: var(--phase-u-bg); color: var(--phase-u); }
+    .badge-v { background: var(--phase-v-bg); color: var(--phase-v); }
+    .badge-w { background: var(--phase-w-bg); color: var(--phase-w); }
+
+    /* --- 7. 버튼 --- */
+    .btn-wrap { text-align: center; margin: 32px 0; }
+    .btn {
+      background: linear-gradient(135deg, #00b4d8, #0077b6);
+      color: #fff;
+      border: none;
+      padding: 14px 48px;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 50px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 20px rgba(0,180,216,0.3);
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(0,180,216,0.4);
+    }
+    
+    /* --- 8. 입력 폼 (Phase 7 추가) --- */
+    .input-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 24px;
+    }
+    .input-group {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .input-label {
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+    .input-field {
+      width: 140px;
+      padding: 10px 14px;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1rem;
+      font-family: var(--font);
+      transition: border-color 0.3s;
+    }
+    .input-field:focus {
+      outline: none;
+      border-color: #00b4d8;
+    }
+    .input-field option {
+      background: var(--bg-card);
+    }
+      box-shadow: 0 8px 30px rgba(0,180,216,0.45);
+    }
+    .btn:active { transform: translateY(0); }
+
+    /* --- 8. 결과 테이블 --- */
+    .result-table { width: 100%; border-collapse: collapse; }
+    .result-table th, .result-table td {
+      padding: 14px 20px;
+      text-align: center;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 0.9rem;
+    }
+    .result-table thead th {
+      font-weight: 700;
+      font-size: 0.95rem;
+      background: rgba(0,0,0,0.2);
+    }
+    .result-table th.phase-u-head { color: var(--phase-u); }
+    .result-table th.phase-v-head { color: var(--phase-v); }
+    .result-table th.phase-w-head { color: var(--phase-w); }
+    .result-table tbody tr:hover { background: var(--bg-card-hover); }
+    .result-table tr:last-child td { border-bottom: none; }
+    .slot-pair {
+      display: inline-block;
+      padding: 4px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      min-width: 70px;
+    }
+    .slot-u { background: var(--phase-u-bg); color: var(--phase-u); }
+    .slot-v { background: var(--phase-v-bg); color: var(--phase-v); }
+    .slot-w { background: var(--phase-w-bg); color: var(--phase-w); }
+
+    /* --- 9. 요약 카드 --- */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      padding: 20px;
+    }
+    .summary-item {
+      text-align: center;
+      padding: 20px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+    }
+    .summary-item.u { background: var(--phase-u-bg); border-color: rgba(255,77,106,0.2); }
+    .summary-item.v { background: var(--phase-v-bg); border-color: rgba(59,130,246,0.2); }
+    .summary-item.w { background: var(--phase-w-bg); border-color: rgba(34,197,94,0.2); }
+    .summary-item .label { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+    .summary-item .value { font-size: 1.5rem; font-weight: 800; }
+    .summary-item.u .value { color: var(--phase-u); }
+    .summary-item.v .value { color: var(--phase-v); }
+    .summary-item.w .value { color: var(--phase-w); }
+    .summary-item .sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+    /* --- 10. 애니메이션 --- */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .hidden { display: none; }
+
+    /* --- 11. SVG 다이어그램 스타일 --- */
+    .svg-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 24px;
+      overflow-x: auto;
+    }
+    #statorSvg {
+      max-width: 100%;
+      height: auto;
+    }
+    /* 스태터 외곽 원 */
+    .stator-body {
+      fill: none;
+      stroke: #3a5068;
+      stroke-width: 30;
+    }
+    /* 내부 보어 원 */
+    .stator-bore {
+      fill: var(--bg-primary);
+      stroke: #2a3e52;
+      stroke-width: 2;
+    }
+    /* 슬롯 사각형 기본 스타일 */
+    .slot-rect {
+      fill: #4a6274;
+      stroke: #5e7b91;
+      stroke-width: 1;
+      cursor: pointer;
+      transition: fill 0.3s ease, filter 0.3s ease;
+    }
+    .slot-rect:hover {
+      filter: brightness(1.4);
+    }
+    /* 슬롯 번호 텍스트 */
+    .slot-label {
+      fill: var(--text-primary);
+      font-size: 16px;
+      font-family: var(--font);
+      font-weight: 700;
+      text-anchor: middle;
+      dominant-baseline: central;
+      pointer-events: none;
+    }
+    /* SVG 범례(Legend) */
+    .legend-wrap {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      padding: 12px 20px 20px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .legend-swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+    }
+    /* --- Phase 3: Motor-CAD 스타일 코일 배선 --- */
+    .wire-u { stroke: #FF3333; stroke-width: 3; fill: none; }
+    .wire-v { stroke: #4488FF; stroke-width: 3; fill: none; }
+    .wire-w { stroke: #33DD55; stroke-width: 3; fill: none; }
+    .winding-arc { stroke-linecap: round; opacity: 0.85; }
+    .coil-arc { stroke-linecap: round; opacity: 0.7; stroke-width: 2.5; }
+    .jumper-curve { opacity: 0.8; stroke-width: 2.8; }
+    .terminal-node { stroke-width: 3; cursor: pointer; }
+    .terminal-label { font-size: 18px; font-weight: 800; text-anchor: middle; dominant-baseline: central; }
+    .delta-line { stroke-width: 2.5; fill: none; }
+    /* 권선 방향 표식: ⊙(진출 = Go), ⊗(진입 = Return) */
+    .winding-marker {
+      font-size: 14px;
+      font-weight: 700;
+      text-anchor: middle;
+      dominant-baseline: central;
+      pointer-events: none;
+    }
+    @keyframes strokeDraw {
+      from { stroke-dashoffset: var(--dash-len); }
+      to { stroke-dashoffset: 0; }
+    }
+    .animated-wire { animation: strokeDraw 1s ease forwards; }
+
+    /* --- 전개 결선도 (Developed Diagram) --- */
+    .dev-arc {
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    #devSvgContainer {
+      min-height: 300px;
+      padding: 12px 0;
+    }
+    #devSvgContainer svg {
+      min-width: 700px;
+    }
+
+    /* --- 12. 반응형 --- */
+    @media (max-width: 600px) {
+      .header h1 { font-size: 1.5rem; }
+      .summary-grid { grid-template-columns: 1fr; }
+      .spec-table th, .spec-table td { padding: 10px 14px; font-size: 0.82rem; }
+      .result-table th, .result-table td { padding: 10px 8px; font-size: 0.8rem; }
+      .legend-wrap { gap: 12px; flex-wrap: wrap; }
+    }
+
+    /* --- 13. 푸터 --- */
+    .footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      border-top: 1px solid var(--border-color);
+      margin-top: 40px;
+    }
