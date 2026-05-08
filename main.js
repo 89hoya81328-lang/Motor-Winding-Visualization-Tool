@@ -399,6 +399,13 @@
       const phaseColors = { U: '#FF3333', V: '#4488FF', W: '#33DD55' };
       const phaseSlotFill = { U: '#cc3333', V: '#3355cc', W: '#33aa44' };
 
+      // === Hybrid C: 코일=외측 / 점퍼=보어 / 중성점 별도색 ===
+      const phaseCoilOffset    = { U: 25, V: 60, W: 95 };   // 외측 코일 호 (outerR 기준)
+      const phaseJumperInset   = { U: 30, V: 50, W: 70 };   // 보어 내측 점퍼 (innerR 기준)
+      const phaseBusR          = { U: outerR + 165, V: outerR + 200, W: outerR + 235 };
+      const neutralBusR        = outerR + 275;
+      const neutralWireColor   = '#B179DB';
+
       // SVG 생성
       const svg = document.createElementNS(ns, 'svg');
       svg.setAttribute('id', 'statorSvg');
@@ -406,17 +413,24 @@
       svg.setAttribute('width', '100%');
       svg.setAttribute('height', 'auto');
 
-      // --- 외곽 원 ---
-      const oc = document.createElementNS(ns, 'circle');
-      oc.setAttribute('cx', cx); oc.setAttribute('cy', cy);
-      oc.setAttribute('r', outerR); oc.setAttribute('class', 'stator-body');
-      svg.appendChild(oc);
-
-      // --- 보어 원 ---
-      const ic = document.createElementNS(ns, 'circle');
-      ic.setAttribute('cx', cx); ic.setAttribute('cy', cy);
-      ic.setAttribute('r', innerR); ic.setAttribute('class', 'stator-bore');
-      svg.appendChild(ic);
+      // --- Stator iron core (annular ring) ---
+      const ironCore = document.createElementNS(ns, 'circle');
+      ironCore.setAttribute('cx', cx); ironCore.setAttribute('cy', cy);
+      ironCore.setAttribute('r', outerR);
+      ironCore.style.fill = '#6e7c8a';
+      ironCore.style.stroke = '#94a3b3';
+      ironCore.style.strokeWidth = '1.5';
+      ironCore.style.strokeOpacity = '0.7';
+      svg.appendChild(ironCore);
+      // --- Bore (air gap) ---
+      const bore = document.createElementNS(ns, 'circle');
+      bore.setAttribute('cx', cx); bore.setAttribute('cy', cy);
+      bore.setAttribute('r', innerR);
+      bore.style.fill = '#0a1828';
+      bore.style.stroke = '#3a4a5a';
+      bore.style.strokeWidth = '1.2';
+      bore.style.strokeOpacity = '0.6';
+      svg.appendChild(bore);
 
       // --- 슬롯 좌표 저장용 배열 ---
       const slotInnerLeft = [];
@@ -445,46 +459,36 @@
       // --- 헬퍼: Motor-CAD 스타일 전류 방향 마커 ---
       // 색상 배경 원 + 백색 ⊙(Dot: 나옴) / ⊗(Cross: 들어감) 기호
       function createMarker(dir, color, offsetX, radius) {
-        const r = radius || 7;
+        const r = radius || 9;
         const markG = document.createElementNS(ns, 'g');
         markG.setAttribute('pointer-events', 'none');
         markG.setAttribute('transform', `translate(${offsetX}, 0)`);
-        
-        // 배경 원 (상 색상으로 채움)
+
         const bg = document.createElementNS(ns, 'circle');
-        bg.setAttribute('cx', 0); bg.setAttribute('cy', 0);
-        bg.setAttribute('r', r);
-        bg.setAttribute('fill', color);
-        bg.setAttribute('fill-opacity', '0.85');
-        bg.setAttribute('stroke', '#ffffff');
-        bg.setAttribute('stroke-width', '1.2');
+        bg.setAttribute('cx', 0); bg.setAttribute('cy', 0); bg.setAttribute('r', r);
+        bg.setAttribute('fill', '#0a1828');
+        bg.setAttribute('stroke', color); bg.setAttribute('stroke-width', '2.2');
         markG.appendChild(bg);
 
-        const symR = r * 0.55; // 내부 기호 반지름 비율
-
+        const symR = r * 0.62;
         if (dir === 'go') {
-          // ⊗ (Cross) - 전류가 들어가는 방향 (화면 안쪽으로)
-          const l1 = document.createElementNS(ns, 'line');
-          l1.setAttribute('x1', -symR); l1.setAttribute('y1', -symR);
-          l1.setAttribute('x2', symR); l1.setAttribute('y2', symR);
-          l1.setAttribute('stroke', '#ffffff'); l1.setAttribute('stroke-width', '2');
-          l1.setAttribute('stroke-linecap', 'round');
-          markG.appendChild(l1);
-          const l2 = document.createElementNS(ns, 'line');
-          l2.setAttribute('x1', -symR); l2.setAttribute('y1', symR);
-          l2.setAttribute('x2', symR); l2.setAttribute('y2', -symR);
-          l2.setAttribute('stroke', '#ffffff'); l2.setAttribute('stroke-width', '2');
-          l2.setAttribute('stroke-linecap', 'round');
-          markG.appendChild(l2);
+          // ⊗ — 들어감
+          [[-symR,-symR,symR,symR],[-symR,symR,symR,-symR]].forEach(([x1,y1,x2,y2])=>{
+            const ln = document.createElementNS(ns,'line');
+            ln.setAttribute('x1',x1); ln.setAttribute('y1',y1);
+            ln.setAttribute('x2',x2); ln.setAttribute('y2',y2);
+            ln.setAttribute('stroke', color); ln.setAttribute('stroke-width', '2.4');
+            ln.setAttribute('stroke-linecap','round');
+            markG.appendChild(ln);
+          });
         } else {
-          // ⊙ (Dot) - 전류가 나오는 방향 (화면 바깥쪽으로)
-          const dot = document.createElementNS(ns, 'circle');
-          dot.setAttribute('cx', 0); dot.setAttribute('cy', 0);
-          dot.setAttribute('r', symR * 0.5);
-          dot.setAttribute('fill', '#ffffff');
-          markG.appendChild(dot);
+          // ⊙ — 나옴
+          const d = document.createElementNS(ns,'circle');
+          d.setAttribute('cx', 0); d.setAttribute('cy', 0);
+          d.setAttribute('r', symR * 0.55);
+          d.setAttribute('fill', color);
+          markG.appendChild(d);
         }
-        
         return markG;
       }
 
@@ -515,85 +519,87 @@
 
         const g = document.createElementNS(ns, 'g');
         g.setAttribute('transform', `translate(${sx},${sy}) rotate(${rotDeg})`);
-
         const sd = slotData ? slotData[num] : null;
         const halfW = slotW / 2;
-
-        // --- Motor-CAD 스타일 슬롯 렌더링 ---
         const isDoubleLayer = sd && sd.left && sd.left.dir && sd.right && sd.right.dir;
 
+        // 슬롯 path (shoe 형상): 요크측 캡슐 + 보어측 좁은 입구
+        const cornerR = halfW;
+        const shoeStart = slotH / 2 - slotH * 0.18;
+        const shoeEnd   = slotH / 2 - slotH * 0.06;
+        const openHalfW = halfW * 0.45;
+        const slotPath = `M ${-halfW} ${-slotH/2 + cornerR} ` +
+                         `A ${cornerR} ${cornerR} 0 0 1 ${halfW} ${-slotH/2 + cornerR} ` +
+                         `L ${halfW} ${shoeStart.toFixed(1)} ` +
+                         `L ${openHalfW.toFixed(1)} ${shoeEnd.toFixed(1)} ` +
+                         `L ${openHalfW.toFixed(1)} ${slotH/2} ` +
+                         `L ${-openHalfW.toFixed(1)} ${slotH/2} ` +
+                         `L ${-openHalfW.toFixed(1)} ${shoeEnd.toFixed(1)} ` +
+                         `L ${-halfW} ${shoeStart.toFixed(1)} Z`;
+
         if (isDoubleLayer) {
-          // 복층권: 좌/우 반 배경
-          const rectL = document.createElementNS(ns, 'rect');
-          rectL.setAttribute('x', -halfW); rectL.setAttribute('y', -slotH / 2);
-          rectL.setAttribute('width', halfW); rectL.setAttribute('height', slotH);
-          rectL.setAttribute('rx', 2);
-          rectL.setAttribute('fill', phaseColors[sd.left.phase]);
-          rectL.setAttribute('fill-opacity', '0.18');
-          rectL.setAttribute('stroke', phaseColors[sd.left.phase]);
-          rectL.setAttribute('stroke-width', '1.5'); rectL.setAttribute('stroke-opacity', '0.5');
-          g.appendChild(rectL);
+          const clipId = `slot-clip-${num}`;
+          const cp = document.createElementNS(ns, 'clipPath');
+          cp.setAttribute('id', clipId);
+          const cpath = document.createElementNS(ns, 'path');
+          cpath.setAttribute('d', slotPath);
+          cp.appendChild(cpath);
+          g.appendChild(cp);
 
-          const rectR = document.createElementNS(ns, 'rect');
-          rectR.setAttribute('x', 0); rectR.setAttribute('y', -slotH / 2);
-          rectR.setAttribute('width', halfW); rectR.setAttribute('height', slotH);
-          rectR.setAttribute('rx', 2);
-          rectR.setAttribute('fill', phaseColors[sd.right.phase]);
-          rectR.setAttribute('fill-opacity', '0.18');
-          rectR.setAttribute('stroke', phaseColors[sd.right.phase]);
-          rectR.setAttribute('stroke-width', '1.5'); rectR.setAttribute('stroke-opacity', '0.5');
-          g.appendChild(rectR);
+          const fillG = document.createElementNS(ns, 'g');
+          fillG.setAttribute('clip-path', `url(#${clipId})`);
+          ['left', 'right'].forEach((k, idx) => {
+            const r = document.createElementNS(ns, 'rect');
+            r.setAttribute('x', idx === 0 ? -halfW : 0);
+            r.setAttribute('y', -slotH/2);
+            r.setAttribute('width', halfW); r.setAttribute('height', slotH);
+            r.setAttribute('fill', phaseColors[sd[k].phase]);
+            r.setAttribute('fill-opacity', '0.7');
+            fillG.appendChild(r);
+          });
+          g.appendChild(fillG);
 
-          const rectBorder = document.createElementNS(ns, 'rect');
-          rectBorder.setAttribute('id', `slot-${num}`);
-          rectBorder.setAttribute('x', -halfW); rectBorder.setAttribute('y', -slotH / 2);
-          rectBorder.setAttribute('width', slotW); rectBorder.setAttribute('height', slotH);
-          rectBorder.setAttribute('rx', 3);
-          rectBorder.setAttribute('fill', 'none');
-          rectBorder.setAttribute('stroke', '#8aa4b8'); rectBorder.setAttribute('stroke-width', '1.5');
-          g.appendChild(rectBorder);
+          const border = document.createElementNS(ns, 'path');
+          border.setAttribute('d', slotPath);
+          border.setAttribute('fill', 'none');
+          border.setAttribute('stroke', '#dde5ee');
+          border.setAttribute('stroke-width', '1.5');
+          border.setAttribute('stroke-opacity', '0.85');
+          g.appendChild(border);
 
-          const divLine = document.createElementNS(ns, 'line');
-          divLine.setAttribute('x1', 0); divLine.setAttribute('y1', -slotH / 2);
-          divLine.setAttribute('x2', 0); divLine.setAttribute('y2', slotH / 2);
-          divLine.setAttribute('stroke', '#8aa4b8'); divLine.setAttribute('stroke-width', '1');
-          divLine.setAttribute('stroke-dasharray', '3,2');
-          g.appendChild(divLine);
+          const div = document.createElementNS(ns, 'line');
+          div.setAttribute('x1', 0); div.setAttribute('y1', -slotH/2 + cornerR);
+          div.setAttribute('x2', 0); div.setAttribute('y2', shoeStart);
+          div.setAttribute('stroke', '#dde5ee'); div.setAttribute('stroke-width', '0.8');
+          div.setAttribute('stroke-opacity', '0.55'); div.setAttribute('stroke-dasharray', '3,2');
+          g.appendChild(div);
 
-          const markerR = Math.min(halfW / 2 - 1, slotH / 5);
-          g.appendChild(createMarker(sd.left.dir, phaseColors[sd.left.phase], -halfW / 2, markerR));
-          g.appendChild(createMarker(sd.right.dir, phaseColors[sd.right.phase], halfW / 2, markerR));
+          const mR = Math.min(halfW * 0.6, slotH * 0.13);
+          g.appendChild(createMarker(sd.left.dir,  phaseColors[sd.left.phase],  -halfW/2, mR));
+          g.appendChild(createMarker(sd.right.dir, phaseColors[sd.right.phase],  halfW/2, mR));
         } else {
-          // 단층권
           const sideData = (sd && sd.left) ? sd.left : ((sd && sd.right) ? sd.right : null);
-          const phaseColor = sideData ? phaseColors[sideData.phase] : '#4a6274';
+          const phaseColor = sideData ? phaseColors[sideData.phase] : '#5a6b7c';
 
-          const rectBg = document.createElementNS(ns, 'rect');
-          rectBg.setAttribute('x', -halfW); rectBg.setAttribute('y', -slotH / 2);
-          rectBg.setAttribute('width', slotW); rectBg.setAttribute('height', slotH);
-          rectBg.setAttribute('rx', 3);
-          rectBg.setAttribute('fill', phaseColor);
-          rectBg.setAttribute('fill-opacity', sideData ? '0.22' : '0.05');
-          rectBg.setAttribute('stroke', phaseColor);
-          rectBg.setAttribute('stroke-width', '1.5');
-          rectBg.setAttribute('stroke-opacity', sideData ? '0.6' : '0.3');
-          g.appendChild(rectBg);
+          const fill = document.createElementNS(ns, 'path');
+          fill.setAttribute('d', slotPath);
+          fill.setAttribute('fill', phaseColor);
+          fill.setAttribute('fill-opacity', sideData ? '0.65' : '0.18');
+          g.appendChild(fill);
 
-          const rectBorder = document.createElementNS(ns, 'rect');
-          rectBorder.setAttribute('id', `slot-${num}`);
-          rectBorder.setAttribute('x', -halfW); rectBorder.setAttribute('y', -slotH / 2);
-          rectBorder.setAttribute('width', slotW); rectBorder.setAttribute('height', slotH);
-          rectBorder.setAttribute('rx', 3);
-          rectBorder.setAttribute('fill', 'none');
-          rectBorder.setAttribute('stroke', '#8aa4b8'); rectBorder.setAttribute('stroke-width', '1.5');
-          g.appendChild(rectBorder);
+          const border = document.createElementNS(ns, 'path');
+          border.setAttribute('d', slotPath);
+          border.setAttribute('fill', 'none');
+          border.setAttribute('stroke', phaseColor);
+          border.setAttribute('stroke-width', '2');
+          border.setAttribute('stroke-opacity', sideData ? '0.95' : '0.4');
+          g.appendChild(border);
 
           if (sideData && sideData.dir) {
-            const markerR = Math.min(halfW / 2 + 1, slotH / 5);
-            g.appendChild(createMarker(sideData.dir, phaseColors[sideData.phase], 0, markerR));
+            const mR = Math.min(halfW * 0.7, slotH * 0.14);
+            g.appendChild(createMarker(sideData.dir, phaseColors[sideData.phase], 0, mR));
           }
         }
-
         svg.appendChild(g);
 
         // 슬롯 번호
@@ -671,87 +677,142 @@
         return startAngle + (slotNum - 1) * angleStep;
       }
 
-      // --- 상별 반지름 오프셋 (Rule 2) ---
-      const phaseRadiusOffset = { U: 20, V: 48, W: 76 };
+
 
       // --- 헬퍼: 슬롯에서 수직으로 이탈하는 엔지니어링 베지어 (Rule 4) ---
       // exitR: 슬롯 끝에서 수직으로 나가는 반지름
       // arcR: 곡선이 따라가는 원형 궤도 반지름
       function makeCoilArc(fromSlot, toSlot, phase, phIdx) {
-        const fromPt = slotBottom[fromSlot]; // In(⊗) = Bottom
-        const toPt = slotBottom[toSlot];     // Out(⊙)이지만 내측 아크이므로 Bottom 접속
-
+        const fromPt = slotTop[fromSlot];   // 외측 연결 (Hybrid)
+        const toPt   = slotTop[toSlot];
         if (!fromPt || !toPt) return null;
-
-        const ang1 = fromPt.ang;
-        const ang2 = toPt.ang;
+        const ang1 = fromPt.ang, ang2 = toPt.ang;
         let angDiff = ang2 - ang1;
         while (angDiff > Math.PI) angDiff -= 2 * Math.PI;
         while (angDiff < -Math.PI) angDiff += 2 * Math.PI;
 
-        // 코일 아크: 내측(bore)으로 들어가는 곡선
-        const phOff = phIdx * 12;
-        const bulge = 40 + Math.abs(angDiff) * 30 + phOff;
-        const coilR = innerR - bulge;
+        const coilR = outerR + phaseCoilOffset[phase] + Math.abs(angDiff) * 8;
         const midAng = ang1 + angDiff / 2;
+        const exitR = outerR + 8;
 
-        // 슬롯에서 수직 이탈 → 내측 곡선 → 수직 진입
-        const exitR = slotR - slotH / 2 - 5;
-        const ex1x = cx + exitR * Math.cos(ang1);
-        const ex1y = cy + exitR * Math.sin(ang1);
-        const cpX = cx + coilR * Math.cos(midAng);
-        const cpY = cy + coilR * Math.sin(midAng);
-        const ex2x = cx + exitR * Math.cos(ang2);
-        const ex2y = cy + exitR * Math.sin(ang2);
+        const ex1x = cx + exitR * Math.cos(ang1), ex1y = cy + exitR * Math.sin(ang1);
+        const ex2x = cx + exitR * Math.cos(ang2), ex2y = cy + exitR * Math.sin(ang2);
+        const cpX  = cx + coilR * Math.cos(midAng), cpY  = cy + coilR * Math.sin(midAng);
 
-        // 2차 → 3차 베지어로 부드럽게
         const d = `M ${fromPt.x.toFixed(1)} ${fromPt.y.toFixed(1)} ` +
                   `L ${ex1x.toFixed(1)} ${ex1y.toFixed(1)} ` +
                   `Q ${cpX.toFixed(1)} ${cpY.toFixed(1)} ${ex2x.toFixed(1)} ${ex2y.toFixed(1)} ` +
                   `L ${toPt.x.toFixed(1)} ${toPt.y.toFixed(1)}`;
-        return { d, midX: cpX, midY: cpY, ang1, ang2, angDiff };
+        return {
+          d,
+          p0: { x: ex1x, y: ex1y },
+          p1: { x: cpX,  y: cpY  },
+          p2: { x: ex2x, y: ex2y }
+        };
       }
 
       function makeJumperArc(fromSlot, toSlot, phase, phIdx) {
-        const fromPt = slotTop[fromSlot]; // Out(⊙) = Top
-        const toPt = slotTop[toSlot];     // In(⊗) = Top (진입점)
-
+        const fromPt = slotBottom[fromSlot];   // 내측 연결 (Hybrid)
+        const toPt   = slotBottom[toSlot];
         if (!fromPt || !toPt) return null;
-
-        const ang1 = fromPt.ang;
-        const ang2 = toPt.ang;
+        const ang1 = fromPt.ang, ang2 = toPt.ang;
         let angDiff = ang2 - ang1;
         while (angDiff > Math.PI) angDiff -= 2 * Math.PI;
         while (angDiff < -Math.PI) angDiff += 2 * Math.PI;
-        const absDeg = Math.abs(angDiff) * 180 / Math.PI;
 
-        // 점퍼 아크: 외측(yoke)로 나가는 곡선 — 상별 오프셋
-        const phOff = phaseRadiusOffset[phase];
-        const jR = outerR + 40 + phOff + (absDeg * 1.2);
+        const jR = innerR - phaseJumperInset[phase] - Math.abs(angDiff) * 6;
+        const exitR = innerR + 12;   // 보어 진입 직전
 
-        // 슬롯에서 수직 이탈 → 외측 곡선 → 수직 진입
-        const exitR = slotR + slotH / 2 + 5;
-        const ex1x = cx + exitR * Math.cos(ang1);
-        const ex1y = cy + exitR * Math.sin(ang1);
-        const ex2x = cx + exitR * Math.cos(ang2);
-        const ex2y = cy + exitR * Math.sin(ang2);
-
-        // 3차 베지어: 외측 궤도를 따라감
-        const cp1x = cx + jR * Math.cos(ang1);
-        const cp1y = cy + jR * Math.sin(ang1);
-        const cp2x = cx + jR * Math.cos(ang2);
-        const cp2y = cy + jR * Math.sin(ang2);
+        const ex1x = cx + exitR * Math.cos(ang1), ex1y = cy + exitR * Math.sin(ang1);
+        const ex2x = cx + exitR * Math.cos(ang2), ex2y = cy + exitR * Math.sin(ang2);
+        const cp1x = cx + jR * Math.cos(ang1),    cp1y = cy + jR * Math.sin(ang1);
+        const cp2x = cx + jR * Math.cos(ang2),    cp2y = cy + jR * Math.sin(ang2);
 
         const d = `M ${fromPt.x.toFixed(1)} ${fromPt.y.toFixed(1)} ` +
                   `L ${ex1x.toFixed(1)} ${ex1y.toFixed(1)} ` +
                   `C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${cp2x.toFixed(1)} ${cp2y.toFixed(1)} ${ex2x.toFixed(1)} ${ex2y.toFixed(1)} ` +
                   `L ${toPt.x.toFixed(1)} ${toPt.y.toFixed(1)}`;
+        return {
+          d,
+          p0: { x: ex1x, y: ex1y },
+          p1: { x: cp1x, y: cp1y },
+          p2: { x: cp2x, y: cp2y },
+          p3: { x: ex2x, y: ex2y }
+        };
+      }
 
-        const p0 = { x: ex1x, y: ex1y };
-        const p1 = { x: cp1x, y: cp1y };
-        const p2 = { x: cp2x, y: cp2y };
-        const p3 = { x: ex2x, y: ex2y };
-        return { d, p0, p1, p2, p3 };
+      // 슬롯 좌/우 반쪽 좌표 헬퍼 — slotData 참조해서 phase+dir 일치하는 반쪽 반환
+      function getSlotConnectPt(slotNum, phase, dir, r) {
+        const sd = slotData ? slotData[slotNum] : null;
+        const ang = slotAngle(slotNum);
+        const D = slotW / 4;
+        let half = 'center';
+        if (sd) {
+          if (sd.left && sd.left.phase === phase && sd.left.dir === dir) half = 'left';
+          else if (sd.right && sd.right.phase === phase && sd.right.dir === dir) half = 'right';
+          else if (sd.left && !sd.right && sd.left.phase === phase) half = 'left';
+          else if (sd.right && !sd.left && sd.right.phase === phase) half = 'right';
+          else if (sd.left && sd.left.phase === phase) half = 'left';
+          else if (sd.right && sd.right.phase === phase) half = 'right';
+        }
+        let x = cx + r * Math.cos(ang);
+        let y = cy + r * Math.sin(ang);
+        if (half === 'left')  { x += D * Math.sin(ang); y -= D * Math.cos(ang); }
+        if (half === 'right') { x -= D * Math.sin(ang); y += D * Math.cos(ang); }
+        return { x, y, ang };
+      }
+
+      // 코일 페어 전용 — 슬롯 입구(visible edge)에서 연결, 보어로 dive
+      function makeCoilPairArc(fromSlot, toSlot, phase, phIdx) {
+        const ang1 = slotAngle(fromSlot);
+        const ang2 = slotAngle(toSlot);
+        const openingR = slotR - slotH / 2;   // 313 — 실제 슬롯 입구
+        const fromPt = getSlotConnectPt(fromSlot, phase, 'go', openingR);
+        const toPt   = getSlotConnectPt(toSlot, phase, 'return', openingR);
+
+        let angDiff = ang2 - ang1;
+        while (angDiff > Math.PI) angDiff -= 2 * Math.PI;
+        while (angDiff < -Math.PI) angDiff += 2 * Math.PI;
+
+        const layerOff = phIdx * 18;   // 상별 동심 레이어
+        const midR = Math.max(60, innerR - 30 - layerOff - Math.abs(angDiff) * 6);
+        const midAng = ang1 + angDiff / 2;
+        const cpX = cx + midR * Math.cos(midAng);
+        const cpY = cy + midR * Math.sin(midAng);
+
+        const d = `M ${fromPt.x.toFixed(1)} ${fromPt.y.toFixed(1)} ` +
+                  `Q ${cpX.toFixed(1)} ${cpY.toFixed(1)} ${toPt.x.toFixed(1)} ${toPt.y.toFixed(1)}`;
+        return { d };
+      }
+
+      // === Phase 1: 터미널→슬롯 동심원 라우팅 ===
+      function makeTerminalRoute(termPt, slotNum, busR, fromTop, slotPtOverride) {
+        const slotAng = slotAngle(slotNum);
+        const entryAng = fromTop ? -Math.PI / 2 : Math.PI / 2;
+        const entryX = cx + busR * Math.cos(entryAng);
+        const entryY = cy + busR * Math.sin(entryAng);
+
+        let dAng = slotAng - entryAng;
+        while (dAng > Math.PI) dAng -= 2 * Math.PI;
+        while (dAng < -Math.PI) dAng += 2 * Math.PI;
+        const sweepFlag = dAng > 0 ? 1 : 0;
+        const largeArc = Math.abs(dAng) > Math.PI ? 1 : 0;
+
+        const arcEndX = cx + busR * Math.cos(slotAng);
+        const arcEndY = cy + busR * Math.sin(slotAng);
+        const slotPt = slotPtOverride || slotTop[slotNum];
+        if (!slotPt) return null;
+
+        const dropY = termPt.y + (fromTop ? 40 : -40);
+        const cp2x = (termPt.x + entryX) / 2;
+
+        return `M ${termPt.x.toFixed(1)} ${termPt.y.toFixed(1)} ` +
+               `L ${termPt.x.toFixed(1)} ${dropY.toFixed(1)} ` +
+               `C ${termPt.x.toFixed(1)} ${entryY.toFixed(1)} ` +
+                 `${cp2x.toFixed(1)} ${entryY.toFixed(1)} ` +
+                 `${entryX.toFixed(1)} ${entryY.toFixed(1)} ` +
+               `A ${busR} ${busR} 0 ${largeArc} ${sweepFlag} ${arcEndX.toFixed(1)} ${arcEndY.toFixed(1)} ` +
+               `L ${slotPt.x.toFixed(1)} ${slotPt.y.toFixed(1)}`;
       }
 
       // --- 화살표 마커 (곡선 중앙) ---
@@ -772,7 +833,9 @@
         }
         const ang = Math.atan2(dy, dx) * 180 / Math.PI;
         const arrow = document.createElementNS(ns, 'path');
-        arrow.setAttribute('d', 'M -6 -4 L 6 0 L -6 4 Z');
+        arrow.setAttribute('d', 'M -10 -6 L 10 0 L -10 6 Z');
+        arrow.setAttribute('stroke', '#0a1828');
+        arrow.setAttribute('stroke-width', '0.8');
         arrow.setAttribute('fill', phaseColors[phase]);
         arrow.setAttribute('opacity', '0.9');
         arrow.setAttribute('transform', `translate(${mx.toFixed(1)},${my.toFixed(1)}) rotate(${ang.toFixed(1)})`);
@@ -785,47 +848,36 @@
 
       const baseR = outerR + 40;
 
+      // v3.1: 코일 페어 호 (보어, 메인 연결) + 점퍼 호 (보어, 옅은 부가)
       ['U', 'V', 'W'].forEach((phase, phIdx) => {
         const cls = `wire-${phase.toLowerCase()}`;
         const branches = WINDING_MAP[phase];
         if (!branches) return;
-
         branches.forEach(br => {
           br.coils.forEach((pair, cIdx) => {
-            const fromSlot = pair[0];
-            const toSlot = pair[1];
-
-            // ========== 1. 코일 아크 (내측, bore 방향) ==========
-            const coil = makeCoilArc(fromSlot, toSlot, phase, phIdx);
+            // 1) 코일 페어 — makeWire 우회, 직접 path 생성 (애니메이션 없음)
+            const coil = makeCoilPairArc(pair[0], pair[1], phase, phIdx);
             if (coil) {
-              const wire = makeWire(coil.d, cls, 'coil-arc', 600);
-              wire.setAttribute('stroke-width', '2.5');
-              wire.setAttribute('opacity', '0.75');
-              connectGroup.appendChild(wire);
-
-              // 코일 아크 중앙 화살표
-              const exitR2 = slotR - slotH / 2 - 5;
-              const qP0 = { x: cx + exitR2 * Math.cos(coil.ang1), y: cy + exitR2 * Math.sin(coil.ang1) };
-              const qP2 = { x: cx + exitR2 * Math.cos(coil.ang2), y: cy + exitR2 * Math.sin(coil.ang2) };
-              const qCP = { x: coil.midX, y: coil.midY };
-              addMidArrow(connectGroup, qP0, qCP, qP2, qP2, phase, false);
+              const cWire = document.createElementNS(ns, 'path');
+              cWire.setAttribute('d', coil.d);
+              cWire.setAttribute('fill', 'none');
+              cWire.setAttribute('stroke', phaseColors[phase]);
+              cWire.setAttribute('stroke-width', '3');
+              cWire.setAttribute('stroke-linecap', 'round');
+              cWire.setAttribute('opacity', '0.95');
+              cWire.setAttribute('class', 'coil-arc');
+              connectGroup.appendChild(cWire);
             }
-
-            // ========== 2. 점퍼 아크 (외측, yoke 방향) ==========
+            // 2) 점퍼 — 분기 내 코일 간 연결 (있을 때만)
             if (cIdx < br.coils.length - 1) {
               const nextPair = br.coils[cIdx + 1];
-              const jFrom = pair[1];   // 코일 end → Out(⊙) → Top
-              const jTo = nextPair[0]; // 다음 코일 start → In(⊗) → Top
-
-              const jumper = makeJumperArc(jFrom, jTo, phase, phIdx);
+              const jumper = makeJumperArc(pair[1], nextPair[0], phase, phIdx);
               if (jumper) {
-                const jWire = makeWire(jumper.d, cls, 'winding-arc jumper-curve', 800);
-                jWire.setAttribute('stroke-width', '2.8');
-                jWire.setAttribute('opacity', '0.85');
+                const jWire = makeWire(jumper.d, cls, 'jumper-curve', 800);
+                jWire.setAttribute('stroke-width', '1.6');
+                jWire.setAttribute('opacity', '0.28');
+                jWire.setAttribute('stroke-dasharray', '4 4');
                 connectGroup.appendChild(jWire);
-
-                // 점퍼 중앙 화살표
-                addMidArrow(connectGroup, jumper.p0, jumper.p1, jumper.p2, jumper.p3, phase, true);
               }
             }
           });
@@ -838,173 +890,193 @@
       const hasWiring = phaseSlots['U'] && phaseSlots['U'].length > 0;
       if (hasWiring) {
         const termGroup = document.createElementNS(ns, 'g');
-        termGroup.setAttribute('id', 'deltaTerminals');
+        termGroup.setAttribute('id', 'phaseTerminals');
 
-        let terminals = [];
-        if (conn === 'Delta') {
-          terminals = [
-            { name: 'U', x: cx - 250, y: 60, color: '#FF3333' },
-            { name: 'V', x: cx,       y: 60, color: '#4488FF' },
-            { name: 'W', x: cx + 250, y: 60, color: '#33DD55' }
-          ];
-        } else {
-          // Y 결선 (스타 결선) - 다중 중성점 지원 및 중앙 정렬
+        const phaseSpacing = 110;
+        const neutralSpacing = 110;
+        const phaseTermY = 80;
+        const neutralTermY = svgH - 80;
+        const nColor = '#88aadd';
+
+        // UVW: 상단 중앙 클러스터
+        const terminals = [
+          { name: 'U', x: cx - phaseSpacing, y: phaseTermY, color: '#FF3333' },
+          { name: 'V', x: cx,                y: phaseTermY, color: '#4488FF' },
+          { name: 'W', x: cx + phaseSpacing, y: phaseTermY, color: '#33DD55' }
+        ];
+
+        // N: 하단 중앙 클러스터 (Y 결선만)
+        const neutralNodes = [];
+        if (conn !== 'Delta') {
           const actualN = Math.max(1, neutralN);
-          const totalNodes = 3 + actualN;
-          const spacing = 140;
-          const startX = cx - ((totalNodes - 1) * spacing) / 2;
-
-          terminals = [
-            { name: 'U', x: startX,               y: 60, color: '#FF3333' },
-            { name: 'V', x: startX + spacing,     y: 60, color: '#4488FF' },
-            { name: 'W', x: startX + spacing * 2, y: 60, color: '#33DD55' }
-          ];
+          const startNX = cx - ((actualN - 1) * neutralSpacing) / 2;
+          for (let ni = 0; ni < actualN; ni++) {
+            neutralNodes.push({
+              name: actualN === 1 ? 'N' : `N${ni + 1}`,
+              x: startNX + ni * neutralSpacing,
+              y: neutralTermY,
+              color: nColor
+            });
+          }
         }
 
-        // 단자 원 + 라벨
-        terminals.forEach(t => {
+        // --- 터미널 박스 그리기 ---
+        function drawTerminal(t) {
           const c = document.createElementNS(ns, 'circle');
           c.setAttribute('cx', t.x); c.setAttribute('cy', t.y);
           c.setAttribute('r', 32);
           c.setAttribute('fill', t.color); c.setAttribute('fill-opacity', '0.15');
           c.setAttribute('stroke', t.color); c.setAttribute('class', 'terminal-node');
           termGroup.appendChild(c);
-
           const l = document.createElementNS(ns, 'text');
           l.setAttribute('x', t.x); l.setAttribute('y', t.y);
           l.setAttribute('class', 'terminal-label'); l.setAttribute('fill', t.color);
           l.textContent = t.name;
           termGroup.appendChild(l);
-        });
+        }
+        terminals.forEach(drawTerminal);
+        neutralNodes.forEach(drawTerminal);
 
+        // --- 라우팅 ---
         if (conn === 'Delta') {
-          // 델타 삼각형 (U-V-W)
-          const triPath = document.createElementNS(ns, 'polygon');
-          triPath.setAttribute('points', terminals.map(t => `${t.x},${t.y + 26}`).join(' '));
-          triPath.setAttribute('fill', 'none'); triPath.setAttribute('stroke', '#5a6f8a');
-          triPath.setAttribute('stroke-width', '1.5'); triPath.setAttribute('stroke-dasharray', '6 5');
-          triPath.setAttribute('opacity', '0.4');
-          termGroup.appendChild(triPath);
-
-          // 단자 → 스태터 연결 (Start=실선, End=점선)
+          // Δ: U→V, V→W, W→U
           const deltaMap = [
             { phase: 'U', startTerm: 0, endTerm: 1 },
             { phase: 'V', startTerm: 1, endTerm: 2 },
             { phase: 'W', startTerm: 2, endTerm: 0 }
           ];
-
           deltaMap.forEach(dm => {
             const pairs = phaseSlots[dm.phase];
-            if(!pairs || pairs.length === 0) return;
+            if (!pairs || pairs.length === 0) return;
             const firstSlot = pairs[0][0];
             const lastSlot = pairs[pairs.length - 1][1];
-            const sPt = slotTop[firstSlot];
-            const ePt = slotTop[lastSlot];
+            const busR = phaseBusR[dm.phase];
 
-            const st = terminals[dm.startTerm];
-            const et = terminals[dm.endTerm];
-
-            // Start 연결 (단자 → 첫 슬롯) — 실선
-            const sAng = slotAngle(firstSlot);
-            const r = baseR + 200 + (dm.startTerm * 20); // routing radius
-            const sCpX = cx + r * Math.cos(sAng);
-            const sCpY = cy + r * Math.sin(sAng);
-            const sD = `M ${st.x} ${st.y + 26} C ${st.x} ${st.y + 60} ${sCpX} ${sCpY} ${sPt.x} ${sPt.y}`;
-            const sWire = makeWire(sD, `wire-${dm.phase.toLowerCase()}`, 'delta-line', 500);
-            sWire.setAttribute('opacity', '0.8');
-            termGroup.appendChild(sWire);
-
-            // End 연결 (마지막 슬롯 → 다음 단자) — 점선
-            const eAng = slotAngle(lastSlot);
-            const er = baseR + 200 + (dm.endTerm * 20);
-            const eCpX = cx + er * Math.cos(eAng);
-            const eCpY = cy + er * Math.sin(eAng);
-            const eD = `M ${ePt.x} ${ePt.y} C ${eCpX} ${eCpY} ${et.x} ${et.y + 60} ${et.x} ${et.y + 26}`;
-            const eWire = makeWire(eD, `wire-${dm.phase.toLowerCase()}`, 'delta-line', 500);
-            eWire.setAttribute('opacity', '0.6');
-            eWire.setAttribute('stroke-dasharray', '8 6');
-            termGroup.appendChild(eWire);
+            // Start: 시작 단자 → 첫 슬롯 (실선)
+            const sD = makeTerminalRoute(terminals[dm.startTerm], firstSlot, busR, true);
+            if (sD) {
+              const sw = makeWire(sD, `wire-${dm.phase.toLowerCase()}`, 'delta-line', 1200);
+              sw.setAttribute('opacity', '0.85');
+              sw.setAttribute('stroke-width', '2.5');
+              termGroup.appendChild(sw);
+            }
+            // End: 마지막 슬롯 → 다음 상 단자 (점선)
+            const eD = makeTerminalRoute(terminals[dm.endTerm], lastSlot, busR, true);
+            if (eD) {
+              const ew = makeWire(eD, `wire-${dm.phase.toLowerCase()}`, 'delta-line', 1200);
+              ew.setAttribute('opacity', '0.55');
+              ew.setAttribute('stroke-dasharray', '8 6');
+              ew.setAttribute('stroke-width', '2.2');
+              termGroup.appendChild(ew);
+            }
           });
         } else {
-          // Y 결선 (스타 결선) - 다중 중성점 지원
-          const actualN = Math.max(1, neutralN);
-          const totalNodes = 3 + actualN;
-          const spacing = 140;
-          const startX = cx - ((totalNodes - 1) * spacing) / 2;
-          const nColor = '#88aadd';
-          
-          // 중성점 위치 (UVW 우측에 이어서 배치)
-          const neutralNodes = [];
-          for (let ni = 0; ni < actualN; ni++) {
-            neutralNodes.push({
-              name: actualN === 1 ? 'N' : `N${ni + 1}`,
-              x: startX + spacing * (3 + ni),
-              y: 60
-            });
-          }
+          // Y 결선 — 상별 분기점 노드 도입 (a > 1일 때)
+          const junctionY = phaseTermY + 90;
+          const junctionR = 16;
 
-          // 중성점 원 + 라벨 그리기
-          neutralNodes.forEach(nd => {
-            const nc = document.createElementNS(ns, 'circle');
-            nc.setAttribute('cx', nd.x); nc.setAttribute('cy', nd.y);
-            nc.setAttribute('r', 32);
-            nc.setAttribute('fill', nColor); nc.setAttribute('fill-opacity', '0.15');
-            nc.setAttribute('stroke', nColor); nc.setAttribute('class', 'terminal-node');
-            termGroup.appendChild(nc);
-
-            const nl = document.createElementNS(ns, 'text');
-            nl.setAttribute('x', nd.x); nl.setAttribute('y', nd.y);
-            nl.setAttribute('class', 'terminal-label'); nl.setAttribute('fill', nColor);
-            nl.textContent = nd.name;
-            termGroup.appendChild(nl);
-          });
-
-          // 각 상의 각 병렬 분기별로 연결
           ['U', 'V', 'W'].forEach((phase, phIdx) => {
             const branches = WINDING_MAP[phase];
+            if (!branches) return;
+            const term = terminals[phIdx];
+            const busR = phaseBusR[phase];
+            const useJunction = branches.length > 1;
+            const startPt = useJunction
+              ? { x: term.x, y: junctionY + junctionR }
+              : { x: term.x, y: term.y + 32 };
+
+            if (useJunction) {
+              // 단자 → 분기점 굵은 와이어
+              const tj = document.createElementNS(ns, 'line');
+              tj.setAttribute('x1', term.x); tj.setAttribute('y1', term.y + 32);
+              tj.setAttribute('x2', term.x); tj.setAttribute('y2', junctionY - junctionR);
+              tj.setAttribute('stroke', term.color);
+              tj.setAttribute('stroke-width', '3.2');
+              tj.setAttribute('stroke-opacity', '0.9');
+              termGroup.appendChild(tj);
+              // 분기점 노드
+              const jc = document.createElementNS(ns, 'circle');
+              jc.setAttribute('cx', term.x); jc.setAttribute('cy', junctionY);
+              jc.setAttribute('r', junctionR);
+              jc.setAttribute('fill', '#0a1828');
+              jc.setAttribute('stroke', term.color);
+              jc.setAttribute('stroke-width', '2');
+              termGroup.appendChild(jc);
+              const jl = document.createElementNS(ns, 'text');
+              jl.setAttribute('x', term.x); jl.setAttribute('y', junctionY);
+              jl.setAttribute('text-anchor', 'middle');
+              jl.setAttribute('dominant-baseline', 'central');
+              jl.setAttribute('fill', term.color);
+              jl.setAttribute('font-size', '11');
+              jl.setAttribute('font-weight', '600');
+              jl.textContent = `a=${branches.length}`;
+              termGroup.appendChild(jl);
+            }
+
             branches.forEach((br, brIdx) => {
               if (br.coils.length === 0) return;
               const firstSlot = br.coils[0][0];
-              const lastSlot = br.coils[br.coils.length - 1][1];
-              const sPt = slotTop[firstSlot];
-              const ePt = slotTop[lastSlot];
-              const st = terminals[phIdx];
+              const lastSlot  = br.coils[br.coils.length - 1][1];
 
-              // Start 연결 (단자 → 첫 슬롯) — 실선 (첫 분기만)
-              if (brIdx === 0) {
-                const sAng = slotAngle(firstSlot);
-                const r = baseR + 200 + (phIdx * 20);
-                const sCpX = cx + r * Math.cos(sAng);
-                const sCpY = cy + r * Math.sin(sAng);
-                const sD = `M ${st.x} ${st.y + 26} C ${st.x} ${st.y + 60} ${sCpX} ${sCpY} ${sPt.x} ${sPt.y}`;
-                const sWire = makeWire(sD, `wire-${phase.toLowerCase()}`, 'delta-line', 500);
-                sWire.setAttribute('opacity', '0.8');
-                termGroup.appendChild(sWire);
-              } else {
-                // 병렬 분기 시작: 단자에서 분기점 표시 (더 작은 opacity)
-                const sAng = slotAngle(firstSlot);
-                const r = baseR + 200 + (phIdx * 20);
-                const sCpX = cx + r * Math.cos(sAng);
-                const sCpY = cy + r * Math.sin(sAng);
-                const sD = `M ${st.x} ${st.y + 26} C ${st.x} ${st.y + 60} ${sCpX} ${sCpY} ${sPt.x} ${sPt.y}`;
-                const sWire = makeWire(sD, `wire-${phase.toLowerCase()}`, 'delta-line', 500);
-                sWire.setAttribute('opacity', '0.4');
-                sWire.setAttribute('stroke-dasharray', '4 3');
-                termGroup.appendChild(sWire);
+              // Start: 분기점(or 단자) → 분기 첫 슬롯 (⊗ 반쪽으로)
+              const goPt = getSlotConnectPt(firstSlot, phase, 'go', slotR + slotH * 0.35);
+              const sD = makeTerminalRoute(startPt, firstSlot, busR, true, goPt);
+              if (sD) {
+                const sw = makeWire(sD, `wire-${phase.toLowerCase()}`, 'delta-line', 1200);
+                sw.setAttribute('opacity', '0.85');
+                sw.setAttribute('stroke-width', useJunction ? '2' : '2.5');
+                termGroup.appendChild(sw);
               }
 
-              // End 연결 (마지막 슬롯 → 해당 중성점) — 점선
+              // End: 분기 마지막 슬롯 → 지정 N 노드 (⊙ 반쪽에서)
               const nIdx = br.neutralIdx >= 0 ? br.neutralIdx : 0;
               const nd = neutralNodes[Math.min(nIdx, neutralNodes.length - 1)];
-              const eAng = slotAngle(lastSlot);
-              const er = baseR + 200 + (nIdx * 15);
-              const eCpX = cx + er * Math.cos(eAng);
-              const eCpY = cy + er * Math.sin(eAng);
-              const eD = `M ${ePt.x} ${ePt.y} C ${eCpX} ${eCpY} ${nd.x} ${nd.y + 60} ${nd.x} ${nd.y + 26}`;
-              const eWire = makeWire(eD, `wire-${phase.toLowerCase()}`, 'delta-line', 500);
-              eWire.setAttribute('opacity', '0.6');
-              eWire.setAttribute('stroke-dasharray', '8 6');
-              termGroup.appendChild(eWire);
+              if (nd) {
+                const retPt = getSlotConnectPt(lastSlot, phase, 'return', slotR + slotH * 0.35);
+                const eD = makeTerminalRoute(nd, lastSlot, neutralBusR, false, retPt);
+                if (eD) {
+                  const ew = makeWire(eD, `wire-${phase.toLowerCase()}`, 'delta-line', 1200);
+                  ew.setAttribute('opacity', '0.6');
+                  ew.setAttribute('stroke-dasharray', '8 6');
+                  ew.setAttribute('stroke-width', '2');
+                  ew.style.stroke = neutralWireColor;
+                  termGroup.appendChild(ew);
+                }
+              }
+
+              // Start/End 라벨 — 철심 바깥, outline 처리, N 번호 포함
+              const labelR = outerR + 12;
+              const offsetAng = 0.08;
+              const sAng = slotAngle(firstSlot) - offsetAng;
+              const eAng = slotAngle(lastSlot) + offsetAng;
+
+              const sLbl = document.createElementNS(ns, 'text');
+              sLbl.setAttribute('x', cx + labelR * Math.cos(sAng));
+              sLbl.setAttribute('y', cy + labelR * Math.sin(sAng));
+              sLbl.setAttribute('text-anchor', 'middle');
+              sLbl.setAttribute('dominant-baseline', 'central');
+              sLbl.setAttribute('fill', term.color);
+              sLbl.setAttribute('stroke', '#0a1828');
+              sLbl.setAttribute('stroke-width', '3');
+              sLbl.setAttribute('paint-order', 'stroke');
+              sLbl.setAttribute('font-size', '15');
+              sLbl.setAttribute('font-weight', '700');
+              sLbl.textContent = `${phase}${brIdx + 1}`;
+              termGroup.appendChild(sLbl);
+
+              const eLbl = document.createElementNS(ns, 'text');
+              eLbl.setAttribute('x', cx + labelR * Math.cos(eAng));
+              eLbl.setAttribute('y', cy + labelR * Math.sin(eAng));
+              eLbl.setAttribute('text-anchor', 'middle');
+              eLbl.setAttribute('dominant-baseline', 'central');
+              eLbl.setAttribute('fill', neutralWireColor);
+              eLbl.setAttribute('stroke', '#0a1828');
+              eLbl.setAttribute('stroke-width', '3');
+              eLbl.setAttribute('paint-order', 'stroke');
+              eLbl.setAttribute('font-size', '15');
+              eLbl.setAttribute('font-weight', '700');
+              eLbl.textContent = `${phase}${brIdx + 1}→${nIdx + 1}`;
+              termGroup.appendChild(eLbl);
             });
           });
         }

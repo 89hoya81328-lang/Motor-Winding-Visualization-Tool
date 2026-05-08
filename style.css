@@ -239,13 +239,13 @@
     }
     /* 스태터 외곽 원 */
     .stator-body {
-      fill: none;
+      /* fill removed */
       stroke: #3a5068;
       stroke-width: 30;
     }
     /* 내부 보어 원 */
     .stator-bore {
-      fill: var(--bg-primary);
+      /* fill removed */
       stroke: #2a3e52;
       stroke-width: 2;
     }
