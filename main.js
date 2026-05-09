@@ -390,8 +390,8 @@
       const ns = 'http://www.w3.org/2000/svg';
       const svgW = 1870, svgH = 1870;
       const cx = 935, cy = 935;
-      const outerR = 425, innerR = 220, slotR = 357;
-      const slotW = 41, slotH = 88, labelR = 468;
+      const outerR = 425, innerR = 220, slotR = 320;
+      const slotW = 41, slotH = 140, labelR = 468;
       const angleStep = (2 * Math.PI) / totalSlots;
       const startAngle = -Math.PI / 2;
 
@@ -431,6 +431,11 @@
       bore.style.strokeWidth = '1.2';
       bore.style.strokeOpacity = '0.6';
       svg.appendChild(bore);
+
+      // Tooth highlight 컨테이너 (철심과 슬롯 사이 z-order)
+      const teethGroup = document.createElementNS(ns, 'g');
+      teethGroup.setAttribute('class', 'teeth-highlights');
+      svg.appendChild(teethGroup);
 
       // --- 슬롯 좌표 저장용 배열 ---
       const slotInnerLeft = [];
@@ -527,13 +532,15 @@
         const cornerR = halfW;
         const shoeStart = slotH / 2 - slotH * 0.18;
         const shoeEnd   = slotH / 2 - slotH * 0.06;
-        const openHalfW = halfW * 0.45;
+        const openHalfW = halfW * 0.30;
+        const boreGap = slotR - slotH/2 - innerR - 3;  // 슬롯 개구가 보어까지 연장될 거리 (3px 마진)
+        const openBottom = slotH/2 + boreGap;          // 슬롯 path의 새로운 바닥 (보어 직전)
         const slotPath = `M ${-halfW} ${-slotH/2 + cornerR} ` +
                          `A ${cornerR} ${cornerR} 0 0 1 ${halfW} ${-slotH/2 + cornerR} ` +
                          `L ${halfW} ${shoeStart.toFixed(1)} ` +
                          `L ${openHalfW.toFixed(1)} ${shoeEnd.toFixed(1)} ` +
-                         `L ${openHalfW.toFixed(1)} ${slotH/2} ` +
-                         `L ${-openHalfW.toFixed(1)} ${slotH/2} ` +
+                         `L ${openHalfW.toFixed(1)} ${openBottom.toFixed(1)} ` +
+                         `L ${-openHalfW.toFixed(1)} ${openBottom.toFixed(1)} ` +
                          `L ${-openHalfW.toFixed(1)} ${shoeEnd.toFixed(1)} ` +
                          `L ${-halfW} ${shoeStart.toFixed(1)} Z`;
 
@@ -552,7 +559,7 @@
             const r = document.createElementNS(ns, 'rect');
             r.setAttribute('x', idx === 0 ? -halfW : 0);
             r.setAttribute('y', -slotH/2);
-            r.setAttribute('width', halfW); r.setAttribute('height', slotH);
+            r.setAttribute('width', halfW); r.setAttribute('height', slotH + boreGap);
             r.setAttribute('fill', phaseColors[sd[k].phase]);
             r.setAttribute('fill-opacity', '0.7');
             fillG.appendChild(r);
@@ -724,34 +731,47 @@
         };
       }
 
-      function makeJumperArc(fromSlot, toSlot, phase, phIdx) {
-        const fromPt = slotBottom[fromSlot];   // 내측 연결 (Hybrid)
-        const toPt   = slotBottom[toSlot];
-        if (!fromPt || !toPt) return null;
-        const ang1 = fromPt.ang, ang2 = toPt.ang;
-        let angDiff = ang2 - ang1;
-        while (angDiff > Math.PI) angDiff -= 2 * Math.PI;
-        while (angDiff < -Math.PI) angDiff += 2 * Math.PI;
+      function makeJumperArc(fromSlot, toSlot, phase, phIdx, customBusR) {
+        const slotOuterR = slotR + slotH * 0.4;
+        const jumperBusR = (customBusR !== undefined) ? customBusR : (outerR + 80);
 
-        const jR = innerR - phaseJumperInset[phase] - Math.abs(angDiff) * 6;
-        const exitR = innerR + 12;   // 보어 진입 직전
+        const fromPt = getSlotConnectPt(fromSlot, phase, 'return', slotOuterR);
+        const toPt   = getSlotConnectPt(toSlot,   phase, 'go',     slotOuterR);
 
-        const ex1x = cx + exitR * Math.cos(ang1), ex1y = cy + exitR * Math.sin(ang1);
-        const ex2x = cx + exitR * Math.cos(ang2), ex2y = cy + exitR * Math.sin(ang2);
-        const cp1x = cx + jR * Math.cos(ang1),    cp1y = cy + jR * Math.sin(ang1);
-        const cp2x = cx + jR * Math.cos(ang2),    cp2y = cy + jR * Math.sin(ang2);
+        const fromAng = Math.atan2(fromPt.y - cy, fromPt.x - cx);
+        const toAng   = Math.atan2(toPt.y - cy,   toPt.x - cx);
 
-        const d = `M ${fromPt.x.toFixed(1)} ${fromPt.y.toFixed(1)} ` +
-                  `L ${ex1x.toFixed(1)} ${ex1y.toFixed(1)} ` +
-                  `C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${cp2x.toFixed(1)} ${cp2y.toFixed(1)} ${ex2x.toFixed(1)} ${ex2y.toFixed(1)} ` +
-                  `L ${toPt.x.toFixed(1)} ${toPt.y.toFixed(1)}`;
-        return {
-          d,
-          p0: { x: ex1x, y: ex1y },
-          p1: { x: cp1x, y: cp1y },
-          p2: { x: cp2x, y: cp2y },
-          p3: { x: ex2x, y: ex2y }
+        const fromBusPt = {
+          x: cx + jumperBusR * Math.cos(fromAng),
+          y: cy + jumperBusR * Math.sin(fromAng)
         };
+        const toBusPt = {
+          x: cx + jumperBusR * Math.cos(toAng),
+          y: cy + jumperBusR * Math.sin(toAng)
+        };
+
+        // 짧은 호 방향 결정
+        let dAng = toAng - fromAng;
+        while (dAng >  Math.PI) dAng -= 2 * Math.PI;
+        while (dAng < -Math.PI) dAng += 2 * Math.PI;
+        const sweep = dAng > 0 ? '1' : '0';
+
+        // 4-segment: slot edge → 반경 외향 → bus 호 → 반경 내향 → slot edge
+        const d = `M ${fromPt.x.toFixed(1)} ${fromPt.y.toFixed(1)} ` +
+                  `L ${fromBusPt.x.toFixed(1)} ${fromBusPt.y.toFixed(1)} ` +
+                  `A ${jumperBusR} ${jumperBusR} 0 0 ${sweep} ${toBusPt.x.toFixed(1)} ${toBusPt.y.toFixed(1)} ` +
+                  `L ${toPt.x.toFixed(1)} ${toPt.y.toFixed(1)}`;
+
+        // 정적 점선 (애니메이션 없음 — dasharray 충돌 회피)
+        const jw = document.createElementNS(ns, 'path');
+        jw.setAttribute('d', d);
+        jw.setAttribute('class', `wire-${phase.toLowerCase()} jumper-arc`);
+        jw.setAttribute('fill', 'none');
+        jw.style.opacity = '0.55';
+        jw.style.strokeWidth = '1.6';
+        jw.style.strokeDasharray = '5 4';
+
+        return jw;
       }
 
       // 슬롯 좌/우 반쪽 좌표 헬퍼 — slotData 참조해서 phase+dir 일치하는 반쪽 반환
@@ -787,14 +807,69 @@
         return 'left';
       }
 
+      function makeToothHighlight(slot1, slot2, phase, branchId, color) {
+        const a1 = slotAngle(slot1);
+        const a2 = slotAngle(slot2);
+        let dAng = a2 - a1;
+        while (dAng >  Math.PI) dAng -= 2 * Math.PI;
+        while (dAng < -Math.PI) dAng += 2 * Math.PI;
+
+        // 인접하지 않으면 skip (1슬롯 피치의 1.4배 초과)
+        const slotPitch = 2 * Math.PI / totalSlots;
+        if (Math.abs(dAng) > slotPitch * 1.4) return null;
+
+        const sweep = dAng > 0 ? '1' : '0';
+        const slotHalfAng = (slotW / 2 + 2) / slotR;
+        let edgeStart, edgeEnd;
+        if (dAng > 0) {
+          edgeStart = a1 + slotHalfAng;
+          edgeEnd   = a2 - slotHalfAng;
+        } else {
+          edgeStart = a1 - slotHalfAng;
+          edgeEnd   = a2 + slotHalfAng;
+        }
+
+        const r1 = innerR + 2;
+        const r2 = outerR - 2;
+        const p1 = { x: cx + r1 * Math.cos(edgeStart), y: cy + r1 * Math.sin(edgeStart) };
+        const p2 = { x: cx + r1 * Math.cos(edgeEnd),   y: cy + r1 * Math.sin(edgeEnd) };
+        const p3 = { x: cx + r2 * Math.cos(edgeEnd),   y: cy + r2 * Math.sin(edgeEnd) };
+        const p4 = { x: cx + r2 * Math.cos(edgeStart), y: cy + r2 * Math.sin(edgeStart) };
+
+        const d = `M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} ` +
+                  `A ${r1} ${r1} 0 0 ${sweep} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)} ` +
+                  `L ${p3.x.toFixed(1)} ${p3.y.toFixed(1)} ` +
+                  `A ${r2} ${r2} 0 0 ${sweep === '1' ? '0' : '1'} ${p4.x.toFixed(1)} ${p4.y.toFixed(1)} ` +
+                  `Z`;
+
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', d);
+        path.setAttribute('fill', color);
+        path.setAttribute('stroke', 'none');
+        path.setAttribute('opacity', '0');                  // 평소 숨김
+        path.setAttribute('data-branch', branchId);
+        path.setAttribute('data-phase', phase);
+        path.setAttribute('data-hover-opacity', '0.45');    // hover 시 부각 값
+        return path;
+      }
+
       // 호버 헬퍼 — 일치하는 식별자 외 모두 dim
       function applyDim(matcher) {
         const root = document.getElementById('statorSvg');
         if (!root) return;
         root.querySelectorAll('[data-branch], [data-phase], [data-neutral]').forEach(el => {
-          if (!matcher(el)) el.style.opacity = '0.12';
+          const hoverOp = el.getAttribute('data-hover-opacity');
+          if (matcher(el)) {
+            // 매치: hover-only면 부각 opacity, 아니면 그대로
+            if (hoverOp !== null) el.style.opacity = hoverOp;
+          } else {
+            // 비매치: hover-only는 0 유지, 일반은 dim
+            if (hoverOp !== null) el.style.opacity = '0';
+            else el.style.opacity = '0.12';
+          }
         });
       }
+
       function clearDim() {
         const root = document.getElementById('statorSvg');
         if (!root) return;
@@ -1186,6 +1261,18 @@
               const lastSlot  = br.coils[br.coils.length - 1][1];
 
               const branchId = `${phase}${brIdx + 1}`;
+
+              // Tooth 하이라이트 — 각 코일이 감싸는 치를 표시
+              const nIdx = br.neutralIdx >= 0 ? br.neutralIdx : 0;
+              br.coils.forEach(coil => {
+                const [s1, s2] = coil;
+                const tooth = makeToothHighlight(s1, s2, phase, branchId, term.color);
+                if (tooth) {
+                  tooth.setAttribute('data-neutral', String(nIdx + 1));
+                  teethGroup.appendChild(tooth);
+                }
+              });
+
               // Start: 정션 → 슬롯 ⊗ 반쪽
               const goPt = getSlotConnectPt(firstSlot, phase, 'go', slotR + slotH * 0.35);
               const sD = makeTerminalRoute(startPt, firstSlot, busR, true, goPt, phaseAngOffset[phase]);
@@ -1199,8 +1286,52 @@
                 addEndpointDot(termGroup, goPt, term.color, undefined, branchId);
               }
 
+              // 코일 간 점퍼 (분기당 코일 ≥ 2일 때) — 외곽 end-winding 표현
+              // 분기별로 점퍼 반경을 달리해서 중첩 방지
+              const totalBranches = 3 * parallelA;
+              const branchLayer = phIdx * parallelA + brIdx;
+              const layerSpacing = totalBranches > 8 ? 8 : (totalBranches > 4 ? 12 : 18);
+              const jumperBusR = outerR + 50 + branchLayer * layerSpacing;
+              for (let ci = 0; ci < br.coils.length - 1; ci++) {
+                const fromSlot = br.coils[ci][1];      // 코일 ci의 return 슬롯
+                const toSlot   = br.coils[ci + 1][0];  // 코일 ci+1의 go 슬롯
+                const jw = makeJumperArc(fromSlot, toSlot, phase, phIdx, jumperBusR);
+                jw.setAttribute('data-branch', branchId);
+                jw.setAttribute('data-phase', phase);
+                termGroup.appendChild(jw);
+              }
+
+              // 코일 순번 라벨 (호버 시만 보임) — "이 슬롯이 이 분기의 N번째 코일"
+              if (br.coils.length > 1) {
+                br.coils.forEach((coil, ci) => {
+                  const num = String(ci + 1);
+                  [coil[0], coil[1]].forEach(slotNum => {
+                    const ang = slotAngle(slotNum);
+                    const labelRpos = slotR + slotH * 0.5 + 12;  // 슬롯 위, 요크 영역
+                    const lx = cx + labelRpos * Math.cos(ang);
+                    const ly = cy + labelRpos * Math.sin(ang);
+                    const txt = document.createElementNS(ns, 'text');
+                    txt.setAttribute('x', lx);
+                    txt.setAttribute('y', ly);
+                    txt.setAttribute('text-anchor', 'middle');
+                    txt.setAttribute('dominant-baseline', 'central');
+                    txt.setAttribute('font-size', '11');
+                    txt.setAttribute('font-weight', '700');
+                    txt.setAttribute('fill', term.color);
+                    txt.setAttribute('stroke', '#0a1828');
+                    txt.setAttribute('stroke-width', '3');
+                    txt.setAttribute('paint-order', 'stroke');
+                    txt.setAttribute('opacity', '0');                // 평소 숨김
+                    txt.setAttribute('data-branch', branchId);
+                    txt.setAttribute('data-phase', phase);
+                    txt.setAttribute('data-hover-opacity', '1');     // 호버 시 표시
+                    txt.textContent = num;
+                    termGroup.appendChild(txt);
+                  });
+                });
+              }
+
               // End: 슬롯 ⊙ 반쪽 → N
-              const nIdx = br.neutralIdx >= 0 ? br.neutralIdx : 0;
               const nd = neutralNodes[Math.min(nIdx, neutralNodes.length - 1)];
               const retPt = getSlotConnectPt(lastSlot, phase, 'return', slotR + slotH * 0.35);
               if (nd) {
