@@ -663,12 +663,25 @@
         const p = document.createElementNS(ns, 'path');
         p.setAttribute('d', d);
         p.setAttribute('class', cls + (extraCls ? ' ' + extraCls : ''));
-        p.style.strokeDasharray = len;
-        p.style.strokeDashoffset = len;
-        p.style.setProperty('--dash-len', len);
         p.classList.add('animated-wire');
         p.style.animationDelay = `${animDelay}s`;
         animDelay += 0.025;
+        // 초기값 — 보수적으로 큰 값
+        const initialLen = len || 4000;
+        p.style.strokeDasharray = initialLen;
+        p.style.strokeDashoffset = initialLen;
+        p.style.setProperty('--dash-len', initialLen);
+        // DOM 삽입 후 실제 path 길이로 자동 보정
+        requestAnimationFrame(() => {
+          try {
+            const actual = p.getTotalLength();
+            if (actual && actual > 0) {
+              p.style.strokeDasharray = actual;
+              p.style.strokeDashoffset = actual;
+              p.style.setProperty('--dash-len', actual);
+            }
+          } catch (e) {}
+        });
         return p;
       }
 
@@ -762,6 +775,81 @@
         return { x, y, ang };
       }
 
+      function getSlotHalf(slotNum, phase, dir) {
+        const sd = slotData ? slotData[slotNum] : null;
+        if (!sd) return 'left';
+        if (sd.left && sd.left.phase === phase && sd.left.dir === dir) return 'left';
+        if (sd.right && sd.right.phase === phase && sd.right.dir === dir) return 'right';
+        if (sd.left && !sd.right && sd.left.phase === phase) return 'left';
+        if (sd.right && !sd.left && sd.right.phase === phase) return 'right';
+        if (sd.left && sd.left.phase === phase) return 'left';
+        if (sd.right && sd.right.phase === phase) return 'right';
+        return 'left';
+      }
+
+      // 호버 헬퍼 — 일치하는 식별자 외 모두 dim
+      function applyDim(matcher) {
+        const root = document.getElementById('statorSvg');
+        if (!root) return;
+        root.querySelectorAll('[data-branch], [data-phase], [data-neutral]').forEach(el => {
+          if (!matcher(el)) el.style.opacity = '0.12';
+        });
+      }
+      function clearDim() {
+        const root = document.getElementById('statorSvg');
+        if (!root) return;
+        root.querySelectorAll('[data-branch], [data-phase], [data-neutral]').forEach(el => {
+          el.style.opacity = '';
+        });
+      }
+      function attachHover(el, matcher) {
+        el.style.cursor = 'pointer';
+        el.addEventListener('mouseenter', () => applyDim(matcher));
+        el.addEventListener('mouseleave', clearDim);
+      }
+
+      // dot — branchId 인자 추가
+      function addEndpointDot(parent, pt, color, r, branchId) {
+        const c = document.createElementNS(ns, 'circle');
+        c.setAttribute('cx', pt.x.toFixed(1));
+        c.setAttribute('cy', pt.y.toFixed(1));
+        c.setAttribute('r', r || 4.5);
+        c.setAttribute('fill', color);
+        c.setAttribute('stroke', '#0a1828');
+        c.setAttribute('stroke-width', '1.2');
+        if (branchId) c.setAttribute('data-branch', branchId);
+        parent.appendChild(c);
+      }
+
+      // 태그 라벨 — group으로 감싸서 hover target 됨
+      function addTagLabel(parent, x, y, text, color, branchId, neutralId) {
+        const g = document.createElementNS(ns, 'g');
+        if (branchId) g.setAttribute('data-branch', branchId);
+        if (neutralId !== undefined) g.setAttribute('data-neutral', String(neutralId));
+        const w = text.length * 7 + 10;
+        const h = 17;
+        const rect = document.createElementNS(ns, 'rect');
+        rect.setAttribute('x', x - w / 2); rect.setAttribute('y', y - h / 2);
+        rect.setAttribute('width', w); rect.setAttribute('height', h);
+        rect.setAttribute('rx', 5);
+        rect.setAttribute('fill', '#0a1828'); rect.setAttribute('fill-opacity', '0.92');
+        rect.setAttribute('stroke', color); rect.setAttribute('stroke-width', '1');
+        rect.setAttribute('stroke-opacity', '0.65');
+        g.appendChild(rect);
+        const t = document.createElementNS(ns, 'text');
+        t.setAttribute('x', x); t.setAttribute('y', y);
+        t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('dominant-baseline', 'central');
+        t.setAttribute('fill', color);
+        t.setAttribute('font-size', '11'); t.setAttribute('font-weight', '700');
+        t.textContent = text;
+        g.appendChild(t);
+        parent.appendChild(g);
+        if (branchId) {
+          attachHover(g, el => el.getAttribute('data-branch') === branchId);
+        }
+      }
+
       // 코일 페어 전용 — 슬롯 입구(visible edge)에서 연결, 보어로 dive
       function makeCoilPairArc(fromSlot, toSlot, phase, phIdx) {
         const ang1 = slotAngle(fromSlot);
@@ -782,12 +870,12 @@
 
         const d = `M ${fromPt.x.toFixed(1)} ${fromPt.y.toFixed(1)} ` +
                   `Q ${cpX.toFixed(1)} ${cpY.toFixed(1)} ${toPt.x.toFixed(1)} ${toPt.y.toFixed(1)}`;
-        return { d };
+        return { d, from: fromPt, to: toPt };
       }
 
       // === Phase 1: 터미널→슬롯 동심원 라우팅 ===
-      function makeTerminalRoute(termPt, slotNum, busR, fromTop, slotPtOverride) {
-        const slotAng = slotAngle(slotNum);
+      function makeTerminalRoute(termPt, slotNum, busR, fromTop, slotPtOverride, angOffset) {
+        const slotAng = slotAngle(slotNum) + (angOffset || 0);
         const entryAng = fromTop ? -Math.PI / 2 : Math.PI / 2;
         const entryX = cx + busR * Math.cos(entryAng);
         const entryY = cy + busR * Math.sin(entryAng);
@@ -855,20 +943,8 @@
         if (!branches) return;
         branches.forEach(br => {
           br.coils.forEach((pair, cIdx) => {
-            // 1) 코일 페어 — makeWire 우회, 직접 path 생성 (애니메이션 없음)
-            const coil = makeCoilPairArc(pair[0], pair[1], phase, phIdx);
-            if (coil) {
-              const cWire = document.createElementNS(ns, 'path');
-              cWire.setAttribute('d', coil.d);
-              cWire.setAttribute('fill', 'none');
-              cWire.setAttribute('stroke', phaseColors[phase]);
-              cWire.setAttribute('stroke-width', '3');
-              cWire.setAttribute('stroke-linecap', 'round');
-              cWire.setAttribute('opacity', '0.95');
-              cWire.setAttribute('class', 'coil-arc');
-              connectGroup.appendChild(cWire);
-            }
-            // 2) 점퍼 — 분기 내 코일 간 연결 (있을 때만)
+            // 코일 페어 호 제거됨 — stator overhang은 명시적 전기 연결이 아니므로
+            // (분기 내 코일 간 jumper는 직렬 연결이므로 유지)
             if (cIdx < br.coils.length - 1) {
               const nextPair = br.coils[cIdx + 1];
               const jumper = makeJumperArc(pair[1], nextPair[0], phase, phIdx);
@@ -933,9 +1009,95 @@
           l.setAttribute('class', 'terminal-label'); l.setAttribute('fill', t.color);
           l.textContent = t.name;
           termGroup.appendChild(l);
+          return c;
         }
-        terminals.forEach(drawTerminal);
-        neutralNodes.forEach(drawTerminal);
+        terminals.forEach(t => {
+          const c = drawTerminal(t);
+          c.setAttribute('data-phase', t.name);
+          attachHover(c, el =>
+            el.getAttribute('data-phase') === t.name ||
+            (el.getAttribute('data-branch') || '').startsWith(t.name)
+          );
+        });
+        neutralNodes.forEach((nd, ni) => {
+          const c = drawTerminal(nd);
+          c.setAttribute('data-neutral', String(ni + 1));
+          attachHover(c, el => el.getAttribute('data-neutral') === String(ni + 1));
+        });
+
+        // 공통 중성점 버스 — N>1이면 N1~N4가 외부 strap으로 묶여 병렬임을 시각화
+        const showCommonN = document.getElementById('inputCommonN')?.checked || false;
+        if (showCommonN && conn !== 'Delta' && neutralNodes.length > 1) {
+          const firstN = neutralNodes[0];
+          const lastN = neutralNodes[neutralNodes.length - 1];
+          const busY = firstN.y + 50;
+
+          // 각 N 원 → 버스 수직선
+          neutralNodes.forEach(nd => {
+            const drop = document.createElementNS(ns, 'line');
+            drop.setAttribute('x1', nd.x); drop.setAttribute('y1', nd.y + 32);
+            drop.setAttribute('x2', nd.x); drop.setAttribute('y2', busY);
+            drop.setAttribute('stroke', neutralWireColor);
+            drop.style.strokeWidth = '2.2';
+            drop.style.opacity = '0.85';
+            drop.setAttribute('data-neutral-bus', '1');
+            termGroup.appendChild(drop);
+          });
+
+          // 수평 공통 버스
+          const bus = document.createElementNS(ns, 'line');
+          bus.setAttribute('x1', firstN.x - 14); bus.setAttribute('y1', busY);
+          bus.setAttribute('x2', lastN.x + 14);  bus.setAttribute('y2', busY);
+          bus.setAttribute('stroke', neutralWireColor);
+          bus.style.strokeWidth = '3.5';
+          bus.style.opacity = '0.92';
+          bus.setAttribute('data-neutral-bus', '1');
+          termGroup.appendChild(bus);
+
+          // 각 분기점 dot
+          neutralNodes.forEach(nd => {
+            const dot = document.createElementNS(ns, 'circle');
+            dot.setAttribute('cx', nd.x); dot.setAttribute('cy', busY);
+            dot.setAttribute('r', 4.5);
+            dot.setAttribute('fill', neutralWireColor);
+            dot.setAttribute('stroke', '#0a1828');
+            dot.setAttribute('stroke-width', '1');
+            dot.setAttribute('data-neutral-bus', '1');
+            termGroup.appendChild(dot);
+          });
+
+          // 작은 라벨 (선택사항 — 너무 어수선하면 이 블록 삭제)
+          const midX = (firstN.x + lastN.x) / 2;
+          const lblG = document.createElementNS(ns, 'g');
+          lblG.setAttribute('data-neutral-bus', '1');
+          const labelText = '공통 N (parallel strap)';
+          const labelW = labelText.length * 7 + 14;
+          const labelH = 17;
+          const labelY = busY + 18;
+          const labelRect = document.createElementNS(ns, 'rect');
+          labelRect.setAttribute('x', midX - labelW/2);
+          labelRect.setAttribute('y', labelY - labelH/2);
+          labelRect.setAttribute('width', labelW);
+          labelRect.setAttribute('height', labelH);
+          labelRect.setAttribute('rx', 5);
+          labelRect.setAttribute('fill', '#0a1828');
+          labelRect.setAttribute('fill-opacity', '0.92');
+          labelRect.setAttribute('stroke', neutralWireColor);
+          labelRect.setAttribute('stroke-width', '1');
+          labelRect.setAttribute('stroke-opacity', '0.65');
+          lblG.appendChild(labelRect);
+          const labelTxt = document.createElementNS(ns, 'text');
+          labelTxt.setAttribute('x', midX);
+          labelTxt.setAttribute('y', labelY);
+          labelTxt.setAttribute('text-anchor', 'middle');
+          labelTxt.setAttribute('dominant-baseline', 'central');
+          labelTxt.setAttribute('fill', neutralWireColor);
+          labelTxt.setAttribute('font-size', '10');
+          labelTxt.setAttribute('font-weight', '700');
+          labelTxt.textContent = labelText;
+          lblG.appendChild(labelTxt);
+          termGroup.appendChild(lblG);
+        }
 
         // --- 라우팅 ---
         if (conn === 'Delta') {
@@ -972,6 +1134,8 @@
           });
         } else {
           // Y 결선 — 상별 분기점 노드 도입 (a > 1일 때)
+          const phaseAngOffset = { U: 0, V: 5 * Math.PI / 180, W: 10 * Math.PI / 180 };
+          const neutralAngOffset = -5 * Math.PI / 180;
           const junctionY = phaseTermY + 90;
           const junctionR = 16;
 
@@ -1002,6 +1166,9 @@
               jc.setAttribute('stroke', term.color);
               jc.setAttribute('stroke-width', '2');
               termGroup.appendChild(jc);
+              jc.setAttribute('data-phase', phase);
+              attachHover(jc, el => el.getAttribute('data-phase') === phase ||
+                                    (el.getAttribute('data-branch') || '').startsWith(phase));
               const jl = document.createElementNS(ns, 'text');
               jl.setAttribute('x', term.x); jl.setAttribute('y', junctionY);
               jl.setAttribute('text-anchor', 'middle');
@@ -1018,65 +1185,51 @@
               const firstSlot = br.coils[0][0];
               const lastSlot  = br.coils[br.coils.length - 1][1];
 
-              // Start: 분기점(or 단자) → 분기 첫 슬롯 (⊗ 반쪽으로)
+              const branchId = `${phase}${brIdx + 1}`;
+              // Start: 정션 → 슬롯 ⊗ 반쪽
               const goPt = getSlotConnectPt(firstSlot, phase, 'go', slotR + slotH * 0.35);
-              const sD = makeTerminalRoute(startPt, firstSlot, busR, true, goPt);
+              const sD = makeTerminalRoute(startPt, firstSlot, busR, true, goPt, phaseAngOffset[phase]);
               if (sD) {
                 const sw = makeWire(sD, `wire-${phase.toLowerCase()}`, 'delta-line', 1200);
-                sw.setAttribute('opacity', '0.85');
-                sw.setAttribute('stroke-width', useJunction ? '2' : '2.5');
+                sw.style.opacity = '0.85';
+                sw.style.strokeWidth = useJunction ? '2' : '2.5';
+                sw.setAttribute('data-branch', branchId);
+                sw.setAttribute('data-phase', phase);
                 termGroup.appendChild(sw);
+                addEndpointDot(termGroup, goPt, term.color, undefined, branchId);
               }
 
-              // End: 분기 마지막 슬롯 → 지정 N 노드 (⊙ 반쪽에서)
+              // End: 슬롯 ⊙ 반쪽 → N
               const nIdx = br.neutralIdx >= 0 ? br.neutralIdx : 0;
               const nd = neutralNodes[Math.min(nIdx, neutralNodes.length - 1)];
+              const retPt = getSlotConnectPt(lastSlot, phase, 'return', slotR + slotH * 0.35);
               if (nd) {
-                const retPt = getSlotConnectPt(lastSlot, phase, 'return', slotR + slotH * 0.35);
-                const eD = makeTerminalRoute(nd, lastSlot, neutralBusR, false, retPt);
+                const eD = makeTerminalRoute(nd, lastSlot, neutralBusR, false, retPt, neutralAngOffset);
                 if (eD) {
                   const ew = makeWire(eD, `wire-${phase.toLowerCase()}`, 'delta-line', 1200);
-                  ew.setAttribute('opacity', '0.6');
-                  ew.setAttribute('stroke-dasharray', '8 6');
-                  ew.setAttribute('stroke-width', '2');
+                  ew.style.opacity = '0.42';
+                  ew.style.strokeDasharray = '6 5';
+                  ew.style.strokeWidth = '1.5';
                   ew.style.stroke = neutralWireColor;
+                  ew.setAttribute('data-branch', branchId);
+                  ew.setAttribute('data-phase', phase);
+                  ew.setAttribute('data-neutral', String(nIdx + 1));
                   termGroup.appendChild(ew);
+                  addEndpointDot(termGroup, retPt, neutralWireColor, undefined, branchId);
                 }
               }
 
-              // Start/End 라벨 — 철심 바깥, outline 처리, N 번호 포함
+              // Start/End 태그 라벨 — 다크 배경으로 와이어와 구분
               const labelR = outerR + 12;
               const offsetAng = 0.08;
-              const sAng = slotAngle(firstSlot) - offsetAng;
-              const eAng = slotAngle(lastSlot) + offsetAng;
-
-              const sLbl = document.createElementNS(ns, 'text');
-              sLbl.setAttribute('x', cx + labelR * Math.cos(sAng));
-              sLbl.setAttribute('y', cy + labelR * Math.sin(sAng));
-              sLbl.setAttribute('text-anchor', 'middle');
-              sLbl.setAttribute('dominant-baseline', 'central');
-              sLbl.setAttribute('fill', term.color);
-              sLbl.setAttribute('stroke', '#0a1828');
-              sLbl.setAttribute('stroke-width', '3');
-              sLbl.setAttribute('paint-order', 'stroke');
-              sLbl.setAttribute('font-size', '15');
-              sLbl.setAttribute('font-weight', '700');
-              sLbl.textContent = `${phase}${brIdx + 1}`;
-              termGroup.appendChild(sLbl);
-
-              const eLbl = document.createElementNS(ns, 'text');
-              eLbl.setAttribute('x', cx + labelR * Math.cos(eAng));
-              eLbl.setAttribute('y', cy + labelR * Math.sin(eAng));
-              eLbl.setAttribute('text-anchor', 'middle');
-              eLbl.setAttribute('dominant-baseline', 'central');
-              eLbl.setAttribute('fill', neutralWireColor);
-              eLbl.setAttribute('stroke', '#0a1828');
-              eLbl.setAttribute('stroke-width', '3');
-              eLbl.setAttribute('paint-order', 'stroke');
-              eLbl.setAttribute('font-size', '15');
-              eLbl.setAttribute('font-weight', '700');
-              eLbl.textContent = `${phase}${brIdx + 1}→${nIdx + 1}`;
-              termGroup.appendChild(eLbl);
+              const goSide = getSlotHalf(firstSlot, phase, 'go');
+              const retSide = getSlotHalf(lastSlot, phase, 'return');
+              const sAng = slotAngle(firstSlot) + (goSide === 'left' ? -offsetAng : offsetAng);
+              const eAng = slotAngle(lastSlot) + (retSide === 'left' ? -offsetAng : offsetAng);
+              addTagLabel(termGroup, cx + labelR * Math.cos(sAng), cy + labelR * Math.sin(sAng),
+                          `${phase}${brIdx + 1}`, term.color, branchId);
+              addTagLabel(termGroup, cx + labelR * Math.cos(eAng), cy + labelR * Math.sin(eAng),
+                          `${phase}${brIdx + 1}→${nIdx + 1}`, neutralWireColor, branchId, nIdx + 1);
             });
           });
         }
@@ -1619,3 +1772,8 @@
       document.getElementById('deltaContainer').appendChild(svg);
       area.classList.remove('hidden');
     }
+
+// 페이지 로드 시 기본값으로 자동 렌더
+window.addEventListener('DOMContentLoaded', () => {
+  generateDesign();
+});
