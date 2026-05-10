@@ -411,7 +411,10 @@
       svg.setAttribute('id', 'statorSvg');
       svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
       svg.setAttribute('width', '100%');
-      svg.setAttribute('height', 'auto');
+      svg.removeAttribute('height');
+      svg.style.height = 'auto';
+      svg.style.maxWidth = '100%';
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
       // --- Stator iron core (annular ring) ---
       const ironCore = document.createElementNS(ns, 'circle');
@@ -1020,35 +1023,8 @@
       }
 
       // ===== 렌더링 시작 =====
-      const connectGroup = document.createElementNS(ns, 'g');
-      connectGroup.setAttribute('id', 'windingArcs');
-
-      const baseR = outerR + 40;
-
-      // v3.1: 코일 페어 호 (보어, 메인 연결) + 점퍼 호 (보어, 옅은 부가)
-      ['U', 'V', 'W'].forEach((phase, phIdx) => {
-        const cls = `wire-${phase.toLowerCase()}`;
-        const branches = WINDING_MAP[phase];
-        if (!branches) return;
-        branches.forEach(br => {
-          br.coils.forEach((pair, cIdx) => {
-            // 코일 페어 호 제거됨 — stator overhang은 명시적 전기 연결이 아니므로
-            // (분기 내 코일 간 jumper는 직렬 연결이므로 유지)
-            if (cIdx < br.coils.length - 1) {
-              const nextPair = br.coils[cIdx + 1];
-              const jumper = makeJumperArc(pair[1], nextPair[0], phase, phIdx);
-              if (jumper) {
-                const jWire = makeWire(jumper.d, cls, 'jumper-curve', 800);
-                jWire.setAttribute('stroke-width', '1.6');
-                jWire.setAttribute('opacity', '0.28');
-                jWire.setAttribute('stroke-dasharray', '4 4');
-                connectGroup.appendChild(jWire);
-              }
-            }
-          });
-        });
-      });
-      svg.appendChild(connectGroup);
+      // 참고: 점퍼는 아래 Y 결선 블록의 branches.forEach에서 그려집니다
+      //      (data-branch 속성 포함, hover 시스템 연동)
 
       // ===== (C) 델타 결선 단자 =====
       // 배선 데이터가 있는 경우에만 단자를 그림
@@ -1455,7 +1431,10 @@
 
       const svg = document.createElementNS(ns, 'svg');
       svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
-      svg.setAttribute('width', '100%'); svg.setAttribute('height', 'auto');
+      svg.setAttribute('width', '100%');
+      svg.style.height = 'auto';
+      svg.style.maxWidth = '100%';
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
       function sCx(s) { return padL + (s-1)*pitch + slotW/2; }
       const mo = slotW * 0.35; 
