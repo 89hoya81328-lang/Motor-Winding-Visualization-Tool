@@ -1178,24 +1178,36 @@
             const firstSlot = pairs[0][0];
             const lastSlot = pairs[pairs.length - 1][1];
             const busR = phaseBusR[dm.phase];
+            const branchId = `${dm.phase}1`;
 
             // Start: 시작 단자 → 첫 슬롯 (실선)
             const sD = makeTerminalRoute(terminals[dm.startTerm], firstSlot, busR, true);
             if (sD) {
               const sw = makeWire(sD, `wire-${dm.phase.toLowerCase()}`, 'delta-line', 1200);
-              sw.setAttribute('opacity', '0.85');
-              sw.setAttribute('stroke-width', '2.5');
+              sw.style.opacity = '0.85';
+              sw.style.strokeWidth = '2.5';
+              sw.setAttribute('data-branch', branchId);
+              sw.setAttribute('data-phase', dm.phase);
               termGroup.appendChild(sw);
             }
             // End: 마지막 슬롯 → 다음 상 단자 (점선)
             const eD = makeTerminalRoute(terminals[dm.endTerm], lastSlot, busR, true);
             if (eD) {
               const ew = makeWire(eD, `wire-${dm.phase.toLowerCase()}`, 'delta-line', 1200);
-              ew.setAttribute('opacity', '0.55');
-              ew.setAttribute('stroke-dasharray', '8 6');
-              ew.setAttribute('stroke-width', '2.2');
+              ew.style.opacity = '0.55';
+              ew.style.strokeDasharray = '8 6';
+              ew.style.strokeWidth = '2.2';
+              ew.setAttribute('data-branch', branchId);
+              ew.setAttribute('data-phase', dm.phase);
               termGroup.appendChild(ew);
             }
+
+            // Tooth highlight (델타도 코일은 동일)
+            pairs.forEach(coil => {
+              const [s1, s2] = coil;
+              const tooth = makeToothHighlight(s1, s2, dm.phase, branchId, phaseColors[dm.phase]);
+              if (tooth) teethGroup.appendChild(tooth);
+            });
           });
         } else {
           // Y 결선 — 상별 분기점 노드 도입 (a > 1일 때)
@@ -1573,9 +1585,51 @@
             drawMk(rx, mkCY, 'return', col);
 
             const botY = slotBot + 10;
-            const dist = Math.abs(rx - gx);
-            const depth = dist * 0.35 + (brIdx * 6);
-            createWire(`M ${gx} ${botY} C ${gx} ${botY+depth}, ${rx} ${botY+depth}, ${rx} ${botY}`, col, wCoil, null, '0.85');
+            const isWrap = (Math.abs(gs - rs) === totalSlots - 1);
+            
+            if (isWrap) {
+              // Wraparound 코일: 두 stub으로 분리하여 양 끝으로 표시
+              // 왼쪽 slot은 왼쪽 가장자리로, 오른쪽 slot은 오른쪽 가장자리로 나감
+              const leftIsGo = (gs < rs);  // go가 왼쪽이면 leftIsGo=true (slot 1이 go)
+              const stubY = botY + 30 + (brIdx * 6);
+              const leftEdgeX = padL - 25;
+              const rightEdgeX = svgW - padL + 25;
+              
+              // 왼쪽 stub
+              const leftSlot_x = leftIsGo ? gx : rx;
+              createWire(`M ${leftSlot_x} ${botY} L ${leftSlot_x} ${stubY} L ${leftEdgeX} ${stubY}`, col, wCoil, null, '0.85');
+              // 왼쪽 가장자리에 화살표
+              const arrL = document.createElementNS(ns, 'path');
+              arrL.setAttribute('d', `M ${leftEdgeX} ${stubY} l 8 -5 l 0 10 z`);
+              arrL.setAttribute('fill', col); arrL.setAttribute('opacity', '0.85');
+              wG.appendChild(arrL);
+              
+              // 오른쪽 stub
+              const rightSlot_x = leftIsGo ? rx : gx;
+              createWire(`M ${rightSlot_x} ${botY} L ${rightSlot_x} ${stubY} L ${rightEdgeX} ${stubY}`, col, wCoil, null, '0.85');
+              // 오른쪽 가장자리에 화살표
+              const arrR = document.createElementNS(ns, 'path');
+              arrR.setAttribute('d', `M ${rightEdgeX} ${stubY} l -8 -5 l 0 10 z`);
+              arrR.setAttribute('fill', col); arrR.setAttribute('opacity', '0.85');
+              wG.appendChild(arrR);
+              
+              // 라벨 "wrap" (양 끝에 작게)
+              [{x: leftEdgeX - 8, anchor: 'end'}, {x: rightEdgeX + 8, anchor: 'start'}].forEach(p => {
+                const lbl = document.createElementNS(ns, 'text');
+                lbl.setAttribute('x', p.x); lbl.setAttribute('y', stubY);
+                lbl.setAttribute('fill', col); lbl.setAttribute('opacity', '0.7');
+                lbl.setAttribute('text-anchor', p.anchor);
+                lbl.setAttribute('dominant-baseline', 'central');
+                lbl.setAttribute('font-size', '10'); lbl.setAttribute('font-weight', '600');
+                lbl.textContent = 'wrap';
+                wG.appendChild(lbl);
+              });
+            } else {
+              // 일반 코일: U자형 직선
+              const dist = Math.abs(rx - gx);
+              const depth = dist * 0.35 + (brIdx * 6);
+              createWire(`M ${gx} ${botY} L ${gx} ${botY+depth} L ${rx} ${botY+depth} L ${rx} ${botY}`, col, wCoil, null, '0.85');
+            }
 
             if (cIdx === 0) {
               const by = busY[phase];
@@ -1598,7 +1652,7 @@
               const nxgx = mX(nxPair[0], fSide(nxPair[0], phase, 'go'));
               const topY = mkCY - 10;
               const jDepth = Math.abs(nxgx - rx) * 0.2 + 20;
-              createWire(`M ${rx} ${topY} C ${rx} ${topY-jDepth}, ${nxgx} ${topY-jDepth}, ${nxgx} ${topY}`, col, wTerm, '5 4', '0.7');
+              createWire(`M ${rx} ${topY} L ${rx} ${topY-jDepth} L ${nxgx} ${topY-jDepth} L ${nxgx} ${topY}`, col, wTerm, '5 4', '0.7');
             }
           });
         });
