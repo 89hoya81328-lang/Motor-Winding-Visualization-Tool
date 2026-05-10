@@ -174,21 +174,21 @@
       }
 
       // --- [WINDING_MAP 구조] 병렬 회로 분기 ---
-      // 각 상의 코일을 a개의 병렬 분기로 균등 분배
+      // 각 상의 코일을 a개의 병렬 분기로 인터리브 분배 (대칭/EMF 균형)
+      // Interleaved: coils[i]를 분기 (i mod a)에 배정 → 각 분기가 스테이터 전체에 골고루 분포
       const WINDING_MAP = { U: [], V: [], W: [] };
       ['U', 'V', 'W'].forEach(phase => {
         const allPairs = phaseSlots[phase];
-        const perBranch = Math.floor(allPairs.length / parallelA);
-        const remainder = allPairs.length % parallelA;
-        let idx = 0;
         for (let b = 0; b < parallelA; b++) {
-          const count = perBranch + (b < remainder ? 1 : 0);
+          const branchCoils = [];
+          for (let i = b; i < allPairs.length; i += parallelA) {
+            branchCoils.push(allPairs[i]);
+          }
           WINDING_MAP[phase].push({
             branch: b + 1,
-            coils: allPairs.slice(idx, idx + count),
+            coils: branchCoils,
             neutralIdx: neutralN > 0 ? (b % neutralN) : -1
           });
-          idx += count;
         }
       });
 
@@ -197,7 +197,7 @@
       resultArea.innerHTML = buildResultHTML(phaseSlots, slotMap, slots, maxGroups, WINDING_MAP, parallelA, neutralN);
       resultArea.classList.remove('hidden');
 
-      drawStator(slots, slotMap, phaseSlots, poles, conn, WINDING_MAP, parallelA, neutralN, slotData);
+      drawStator(slots, slotMap, phaseSlots, poles, conn, WINDING_MAP, parallelA, neutralN, slotData, layer);
       diagramArea.classList.remove('hidden');
 
       // Motor-CAD 스타일 전개 결선도
@@ -386,7 +386,7 @@
      * =====================================================
      * 스태터 단면도 + 코일 배선 곡선 + 델타 결선 단자를 그립니다.
      */
-    function drawStator(totalSlots, slotMap, phaseSlots, poles, conn, WINDING_MAP, parallelA, neutralN, slotData) {
+    function drawStator(totalSlots, slotMap, phaseSlots, poles, conn, WINDING_MAP, parallelA, neutralN, slotData, layer) {
       const ns = 'http://www.w3.org/2000/svg';
       const svgW = 1870, svgH = 1870;
       const cx = 935, cy = 935;
@@ -642,6 +642,20 @@
       }
       ct2.textContent = centerSubText;
       ctGroup.appendChild(ct2);
+
+      // 권선 방식 명기 (3번째 줄)
+      const qVal = totalSlots / (3 * (poles || 1));
+      const isFSCW = qVal < 1;
+      const layerStr = (layer === 1) ? '단층' : '복층';
+      const coilsPerBranch = WINDING_MAP['U'] && WINDING_MAP['U'][0] ? WINDING_MAP['U'][0].coils.length : 0;
+      const groupingStr = (parallelA > 1 && coilsPerBranch >= 2) ? ' | 그룹핑: Interleaved' : '';
+      const ct3 = document.createElementNS(ns, 'text');
+      ct3.setAttribute('x', cx); ct3.setAttribute('y', cy + 60);
+      ct3.setAttribute('text-anchor', 'middle');
+      ct3.setAttribute('fill', '#6a8db0'); ct3.setAttribute('font-size', '17');
+      ct3.setAttribute('font-weight', '500');
+      ct3.textContent = `${isFSCW ? '집중권 (FSCW)' : '분포권'} · ${layerStr} · q=${qVal.toFixed(qVal % 1 === 0 ? 0 : 3)}${groupingStr}`;
+      ctGroup.appendChild(ct3);
 
       svg.appendChild(ctGroup);
 
