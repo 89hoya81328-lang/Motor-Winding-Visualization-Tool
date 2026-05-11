@@ -1222,39 +1222,67 @@
             const term = terminals[phIdx];
             const busR = phaseBusR[phase];
             const useJunction = branches.length > 1;
-            const startPt = useJunction
-              ? { x: term.x, y: junctionY + junctionR }
-              : { x: term.x, y: term.y + 32 };
 
+            // 분기별 시작 노드 위치 계산 (a개 노드를 가로 바 위에 배치)
+            const branchNodes = [];  // 각 분기의 시작 좌표
             if (useJunction) {
-              // 단자 → 분기점 굵은 와이어
+              const a = branches.length;
+              const nodeSpacing = a <= 4 ? 14 : (a <= 6 ? 11 : 9);
+              const barWidth = (a - 1) * nodeSpacing;
+              const barXStart = term.x - barWidth / 2;
+              const barXEnd = term.x + barWidth / 2;
+
+              // 단자 → 바 중심 굵은 와이어
               const tj = document.createElementNS(ns, 'line');
               tj.setAttribute('x1', term.x); tj.setAttribute('y1', term.y + 32);
-              tj.setAttribute('x2', term.x); tj.setAttribute('y2', junctionY - junctionR);
+              tj.setAttribute('x2', term.x); tj.setAttribute('y2', junctionY);
               tj.setAttribute('stroke', term.color);
               tj.setAttribute('stroke-width', '3.2');
               tj.setAttribute('stroke-opacity', '0.9');
+              tj.setAttribute('data-phase', phase);
               termGroup.appendChild(tj);
-              // 분기점 노드
-              const jc = document.createElementNS(ns, 'circle');
-              jc.setAttribute('cx', term.x); jc.setAttribute('cy', junctionY);
-              jc.setAttribute('r', junctionR);
-              jc.setAttribute('fill', '#0a1828');
-              jc.setAttribute('stroke', term.color);
-              jc.setAttribute('stroke-width', '2');
-              termGroup.appendChild(jc);
-              jc.setAttribute('data-phase', phase);
-              attachHover(jc, el => el.getAttribute('data-phase') === phase ||
-                                    (el.getAttribute('data-branch') || '').startsWith(phase));
-              const jl = document.createElementNS(ns, 'text');
-              jl.setAttribute('x', term.x); jl.setAttribute('y', junctionY);
-              jl.setAttribute('text-anchor', 'middle');
-              jl.setAttribute('dominant-baseline', 'central');
-              jl.setAttribute('fill', term.color);
-              jl.setAttribute('font-size', '11');
-              jl.setAttribute('font-weight', '600');
-              jl.textContent = `a=${branches.length}`;
-              termGroup.appendChild(jl);
+
+              // 가로 분기 바 (split bar)
+              const bar = document.createElementNS(ns, 'line');
+              bar.setAttribute('x1', barXStart - 4); bar.setAttribute('y1', junctionY);
+              bar.setAttribute('x2', barXEnd + 4);   bar.setAttribute('y2', junctionY);
+              bar.setAttribute('stroke', term.color);
+              bar.setAttribute('stroke-width', '3');
+              bar.setAttribute('stroke-opacity', '0.85');
+              bar.setAttribute('data-phase', phase);
+              termGroup.appendChild(bar);
+
+              // a개 분기 노드 (작은 원 + 번호)
+              for (let i = 0; i < a; i++) {
+                const dotX = barXStart + i * nodeSpacing;
+                const branchId = `${phase}${i + 1}`;
+                branchNodes.push({ x: dotX, y: junctionY, color: term.color });
+
+                const dot = document.createElementNS(ns, 'circle');
+                dot.setAttribute('cx', dotX); dot.setAttribute('cy', junctionY);
+                dot.setAttribute('r', 5.5);
+                dot.setAttribute('fill', '#0a1828');
+                dot.setAttribute('stroke', term.color);
+                dot.setAttribute('stroke-width', '2');
+                dot.setAttribute('data-branch', branchId);
+                dot.setAttribute('data-phase', phase);
+                termGroup.appendChild(dot);
+                attachHover(dot, el => (el.getAttribute('data-branch') || '') === branchId);
+
+                // 분기 번호 라벨 (바 위에)
+                const numLbl = document.createElementNS(ns, 'text');
+                numLbl.setAttribute('x', dotX); numLbl.setAttribute('y', junctionY - 13);
+                numLbl.setAttribute('text-anchor', 'middle');
+                numLbl.setAttribute('dominant-baseline', 'central');
+                numLbl.setAttribute('fill', term.color);
+                numLbl.setAttribute('font-size', '9');
+                numLbl.setAttribute('font-weight', '700');
+                numLbl.textContent = String(i + 1);
+                termGroup.appendChild(numLbl);
+              }
+            } else {
+              // a=1: 단자 자체가 시작점 (분기 노드 없음)
+              branchNodes.push({ x: term.x, y: term.y + 32, color: term.color });
             }
 
             branches.forEach((br, brIdx) => {
@@ -1275,9 +1303,10 @@
                 }
               });
 
-              // Start: 정션 → 슬롯 ⊗ 반쪽
+              // Start: 분기 노드 → 슬롯 ⊗ 반쪽
+              const branchStartPt = branchNodes[brIdx] || branchNodes[0];
               const goPt = getSlotConnectPt(firstSlot, phase, 'go', slotR + slotH * 0.35);
-              const sD = makeTerminalRoute(startPt, firstSlot, busR, true, goPt, phaseAngOffset[phase]);
+              const sD = makeTerminalRoute(branchStartPt, firstSlot, busR, true, goPt, phaseAngOffset[phase]);
               if (sD) {
                 const sw = makeWire(sD, `wire-${phase.toLowerCase()}`, 'delta-line', 1200);
                 sw.style.opacity = '0.85';
@@ -1427,7 +1456,7 @@
       const slotGap = totalSlots <= 12 ? 30 : totalSlots <= 24 ? 18 : 10;
       const slotH = totalSlots <= 12 ? 140 : totalSlots <= 24 ? 90 : 70;
       const pitch = slotW + slotGap;
-      const padL = totalSlots <= 12 ? 70 : 50;
+      const padL = totalSlots <= 12 ? 90 : 70;
       const padR = padL;
 
       const svgW = padL + totalSlots * pitch + padR;
@@ -1499,15 +1528,27 @@
 
       for (let s=1; s<=totalSlots; s++) {
         const cx=sCx(s);
-        const r=document.createElementNS(ns,'rect');
-        r.setAttribute('x',cx-slotW/2); r.setAttribute('y',slotTop);
-        r.setAttribute('width',slotW); r.setAttribute('height',slotH);
+        // 슈 형상: 위(요크측) 넓고, 아래(보어측) 좁아짐
+        const halfW = slotW / 2;
+        const openHalfW = halfW * 0.40;  // 슬롯 개구 폭 (본체의 40%)
+        const shoeStart = slotTop + slotH * 0.82;  // 슈 전환 시작 (위에서 82% 지점)
+        const shoeEnd   = slotTop + slotH * 0.94;  // 슈 전환 끝 (좁은 개구)
+        const slotPath = `M ${cx-halfW} ${slotTop} `
+                       + `L ${cx+halfW} ${slotTop} `
+                       + `L ${cx+halfW} ${shoeStart} `
+                       + `L ${cx+openHalfW} ${shoeEnd} `
+                       + `L ${cx+openHalfW} ${slotTop+slotH} `
+                       + `L ${cx-openHalfW} ${slotTop+slotH} `
+                       + `L ${cx-openHalfW} ${shoeEnd} `
+                       + `L ${cx-halfW} ${shoeStart} Z`;
+        const r=document.createElementNS(ns,'path');
+        r.setAttribute('d', slotPath);
         r.setAttribute('fill','#223a54'); 
         r.setAttribute('stroke','#4a6a80'); r.setAttribute('stroke-width','2');
         svg.appendChild(r);
 
         const t=document.createElementNS(ns,'text');
-        t.setAttribute('x',cx); t.setAttribute('y',slotTop+slotH/2);
+        t.setAttribute('x',cx); t.setAttribute('y',slotTop+slotH*0.42);  // 본체 중앙 위쪽에 번호
         t.setAttribute('text-anchor','middle'); t.setAttribute('dominant-baseline','central');
         t.setAttribute('fill','#fff'); t.setAttribute('font-size', totalSlots <= 12 ? '18' : '12');
         t.setAttribute('font-weight','700'); t.setAttribute('font-family','var(--font)');
